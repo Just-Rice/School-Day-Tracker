@@ -1,0 +1,124 @@
+{
+  "schoolId": "cms",
+  "schoolYear": "2026-2027",
+  "cycle": {
+    "mode": "rotation",
+    "days": [
+      { "id": "A", "name": "A Day" },
+      { "id": "B", "name": "B Day" }
+    ]
+  },
+  "periods": [
+    { "id": "1", "name": "Period 1" },
+    { "id": "2", "name": "Period 2" },
+    { "id": "3", "name": "Period 3" },
+    { "id": "4", "name": "Period 4" },
+    { "id": "5", "name": "Period 5" },
+    { "id": "6", "name": "Period 6" },
+    { "id": "7", "name": "Period 7" },
+    { "id": "8", "name": "Period 8" },
+    { "id": "WIN", "name": "WIN", "kind": "other" }
+  ],
+  "bells": [
+    {
+      "id": "regular",
+      "name": "Regular day",
+      "days": {
+        "*": [
+          { "period": "1", "start": "07:42", "end": "08:26" },
+          { "period": "2", "start": "08:31", "end": "09:15" },
+          { "period": "3", "start": "09:20", "end": "10:04" },
+          { "period": "4", "start": "10:09", "end": "10:53" },
+          { "period": "5", "start": "10:58", "end": "11:42" },
+          { "period": "6", "start": "11:47", "end": "12:31" },
+          { "period": "7", "start": "12:36", "end": "13:20" },
+          { "period": "WIN", "start": "13:25", "end": "13:51", "kind": "other" },
+          { "period": "8", "start": "13:56", "end": "14:40" }
+        ]
+      }
+    },
+    {
+      "id": "delay",
+      "name": "90-minute delayed opening",
+      "days": {
+        "*": [
+          { "period": "1", "start": "09:10", "end": "09:53", "label": "Homeroom + Period 1" },
+          { "period": "2", "start": "09:57", "end": "10:34" },
+          { "period": "3", "start": "10:38", "end": "11:15" },
+          { "period": "4", "start": "11:19", "end": "11:56" },
+          { "period": "5", "start": "12:00", "end": "12:37" },
+          { "period": "6", "start": "12:41", "end": "13:18" },
+          { "period": "7", "start": "13:22", "end": "13:59" },
+          { "period": "8", "start": "14:03", "end": "14:40" }
+        ]
+      }
+    },
+    {
+      "id": "early",
+      "name": "Early dismissal",
+      "days": {
+        "*": [
+          { "period": "1", "start": "07:42", "end": "08:16", "label": "Homeroom + Period 1" },
+          { "period": "2", "start": "08:20", "end": "08:51" },
+          { "period": "3", "start": "08:55", "end": "09:26" },
+          { "period": "4", "start": "09:30", "end": "10:01" },
+          { "period": "5", "start": "10:05", "end": "10:36" },
+          { "period": "6", "start": "10:40", "end": "11:11" },
+          { "period": "7", "start": "11:15", "end": "11:46" },
+          { "period": "8", "start": "11:50", "end": "12:21" }
+        ]
+      }
+    }
+  ],
+  "calendar": {
+    "firstDay": "2026-09-02",
+    "lastDay": "2027-06-17",
+    "anchor": { "date": "2026-10-08", "cycleDay": "A" },
+    "noSchool": [
+      { "date": "2026-09-07", "name": "Labor Day" },
+      { "date": "2026-09-21", "name": "Yom Kippur" },
+      { "date": "2026-11-05", "end": "2026-11-06", "name": "NJEA Convention" },
+      { "date": "2026-11-26", "end": "2026-11-27", "name": "Thanksgiving recess" },
+      { "date": "2026-12-24", "end": "2027-01-01", "name": "Winter recess" },
+      { "date": "2027-01-18", "name": "Martin Luther King Jr. Day" },
+      { "date": "2027-02-12", "name": "Professional development day (no students)" },
+      { "date": "2027-02-15", "name": "Presidents' Day" },
+      { "date": "2027-03-10", "name": "Schools closed" },
+      { "date": "2027-03-22", "end": "2027-03-26", "name": "Spring recess" },
+      { "date": "2027-03-29", "name": "Emergency closing day #1 (school is open if 1+ snow day was used)" },
+      { "date": "2027-04-22", "name": "Schools closed" },
+      { "date": "2027-04-23", "name": "Emergency closing day #2 (school is open if 2+ snow days were used)" },
+      { "date": "2027-05-28", "name": "Emergency closing day #3 (school is open if 3 snow days were used)" },
+      { "date": "2027-05-31", "name": "Memorial Day" }
+    ],
+    "specialDays": [
+      { "date": "2026-10-22", "name": "Early dismissal: parent-teacher conferences", "bell": "early" },
+      { "date": "2026-10-23", "name": "Early dismissal: parent-teacher conferences", "bell": "early" },
+      { "date": "2026-11-25", "name": "Early dismissal before Thanksgiving recess · No homework night", "bell": "early" },
+      { "date": "2026-12-23", "name": "Early dismissal before winter recess · No homework night", "bell": "early" },
+      { "date": "2027-02-01", "name": "Early dismissal: parent-teacher conferences", "bell": "early" },
+      { "date": "2027-02-02", "name": "Early dismissal: parent-teacher conferences", "bell": "early" },
+      { "date": "2027-02-11", "name": "No homework night" },
+      { "date": "2027-03-19", "name": "No homework night (spring recess)" },
+      { "date": "2027-06-17", "name": "Last day of school · Early dismissal", "bell": "early" }
+    ]
+  },
+  "source": {
+    "urls": [
+      "https://www.west-windsor-plainsboro.k12.nj.us/common/pages/GetFile.ashx?key=iYk2BEBy",
+      "https://aptg.co/1gHPpR",
+      "https://docs.google.com/spreadsheets/d/12P59_jyqnhQgRyqN2n8nNLkNCDugLuCR1Mlfz_PeYN0/edit",
+      "https://docs.google.com/document/d/14N_7f592KLlktNCQ3rerA9aBDkxGd_-cig4Sud_dFHw/edit",
+      "https://drive.google.com/drive/folders/1glBGqhc8TRnGlQ8H0UxcMwE5A7ZlYg7y",
+      "https://www.ww-p.org/page/academic-calendars",
+      "https://www.west-windsor-plainsboro.k12.nj.us/common/pages/GetFile.ashx?key=p6g9BGVT",
+      "https://aptg.co/ntmJ6y",
+      "https://www.west-windsor-plainsboro.k12.nj.us/parents___students/school_hours/regular_school_day",
+      "https://www.west-windsor-plainsboro.k12.nj.us/parents___students/school_hours/90-_minute_delay",
+      "https://www.west-windsor-plainsboro.k12.nj.us/parents___students/school_hours/early_dismissal___scheduled_"
+    ],
+    "note": "2026-27 data from the official 2026-27 WW-P Middle School Student Handbook, the district middle school bell schedule sheet and the Board-approved 2026-27 calendar. Every day uses the same bell; electives and PE alternate on A/B days, which alternate each school day (the CMS morning announcements confirm Sept 2 and Oct 8, 2026 were A Days). Lunch is inside a period: grade 6 in period 6, grade 7 in period 7, grade 8 in period 4 or 5. Assumed: an emergency closing day does not use up an A/B letter (check the announcement after Mar 29). The handbook header says 7:43, but its table and the district school-hours page say 7:42. Add snow days and unscheduled delays under Day changes.",
+    "verified": true,
+    "retrieved": "2026-10-08"
+  }
+}
