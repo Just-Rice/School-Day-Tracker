@@ -11,6 +11,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { execSync } from 'node:child_process';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [repoArg, id, outArg] = process.argv.slice(2);
@@ -27,7 +28,8 @@ try {
   ({ chromium } = await import('playwright'));
 } catch {
   // fall back to a globally installed Playwright
-  const req = createRequire(path.join(process.env.NPM_GLOBAL || '/usr/local/lib/node_modules', 'x.js'));
+  const globalRoot = process.env.NPM_GLOBAL || execSync('npm root -g').toString().trim();
+  const req = createRequire(path.join(globalRoot, 'x.js'));
   ({ chromium } = req('playwright'));
 }
 
