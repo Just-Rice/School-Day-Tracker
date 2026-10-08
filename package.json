@@ -1,0 +1,39 @@
+{
+  "name": "school-day-tracker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Class schedule, homework tracker and indoor maps for WW-P High School North and Community Middle School students",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "extract-maps": "node tools/extract-school-map.mjs"
+  },
+  "dependencies": {
+    "firebase": "^12.4.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.9.4"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.18.11",
+    "@types/react": "^19.1.17",
+    "@types/react-dom": "^19.1.11",
+    "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.1",
+    "vite-plugin-pwa": "^1.1.0",
+    "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "rollup": "4.52.5"
+  }
+}
