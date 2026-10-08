@@ -1,0 +1,49 @@
+{
+  "schoolId": "other",
+  "schoolYear": "2026-2027",
+  "cycle": {
+    "mode": "weekday",
+    "days": [
+      { "id": "mon", "name": "Monday" },
+      { "id": "tue", "name": "Tuesday" },
+      { "id": "wed", "name": "Wednesday" },
+      { "id": "thu", "name": "Thursday" },
+      { "id": "fri", "name": "Friday" }
+    ]
+  },
+  "periods": [
+    { "id": "1", "name": "Period 1" },
+    { "id": "2", "name": "Period 2" },
+    { "id": "3", "name": "Period 3" },
+    { "id": "4", "name": "Period 4" },
+    { "id": "L", "name": "Lunch", "kind": "lunch" },
+    { "id": "5", "name": "Period 5" },
+    { "id": "6", "name": "Period 6" },
+    { "id": "7", "name": "Period 7" }
+  ],
+  "bells": [
+    {
+      "id": "regular",
+      "name": "Regular day",
+      "days": {
+        "*": [
+          { "period": "1", "start": "08:00", "end": "08:50" },
+          { "period": "2", "start": "08:55", "end": "09:45" },
+          { "period": "3", "start": "09:50", "end": "10:40" },
+          { "period": "4", "start": "10:45", "end": "11:35" },
+          { "period": "L", "start": "11:35", "end": "12:10", "kind": "lunch" },
+          { "period": "5", "start": "12:15", "end": "13:05" },
+          { "period": "6", "start": "13:10", "end": "14:00" },
+          { "period": "7", "start": "14:05", "end": "14:55" }
+        ]
+      }
+    }
+  ],
+  "calendar": {
+    "firstDay": "2026-09-01",
+    "lastDay": "2027-06-18",
+    "noSchool": [],
+    "specialDays": []
+  },
+  "source": { "urls": [], "note": "Generic template: edit it on the Bell schedule page to match your school.", "verified": false }
+}
