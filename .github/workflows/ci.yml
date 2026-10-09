@@ -1,0 +1,48 @@
+# Checks every push and pull request: types, unit tests, a production build and the school
+# schedule files. Deploying is a separate workflow (deploy.yml).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# a newer push to the same branch makes the older run pointless
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Validate school schedules
+        run: |
+          if [ -f tools/validate-schedules.mjs ]; then
+            node tools/validate-schedules.mjs
+          else
+            echo "tools/validate-schedules.mjs not found; skipping"
+          fi

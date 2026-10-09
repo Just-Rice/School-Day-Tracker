@@ -3,13 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="Your class schedule, homework and school maps for WW-P High School North and Community Middle School." />
-    <meta name="theme-color" content="#1f45a8" />
-    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
     <title>School Day Tracker</title>
+    <meta name="description" content="Your class schedule, homework and school maps with walking directions, for WW-P High School North and Community Middle School students." />
+    <!-- Layout.tsx updates theme-color to the student's school color -->
+    <meta name="theme-color" content="#1f45a8" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Vite fills in the base path: '/' locally, '/School-Day-Tracker/' on GitHub Pages -->
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%icons/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%icons/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="%BASE_URL%icons/apple-touch-icon-180.png" />
+    <!-- installed on an iPhone home screen: full screen, app name under the icon -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="School Day" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>School Day Tracker needs JavaScript to run.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,0 +1,65 @@
+/* PWA update / offline-ready toast (UpdateToast.tsx). Bottom right on wide screens; on phones it
+   sits just above the bottom tab bar. */
+.update-toast-region {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  display: flex;
+  justify-content: flex-end;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
+}
+.update-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  /* one line when it fits; wraps the buttons under the text when it doesn't */
+  width: max-content;
+  max-width: 420px;
+  padding: 10px 10px 10px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18), var(--shadow);
+  animation: update-toast-in 0.2s ease-out;
+}
+.update-toast-text {
+  margin: 0;
+  flex: 1 1 auto;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.update-toast-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+@keyframes update-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-toast {
+    animation: none;
+  }
+}
+@media (max-width: 760px) {
+  .update-toast-region {
+    left: 16px;
+    right: 16px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    max-width: none;
+    justify-content: center;
+  }
+  .update-toast {
+    width: 100%;
+    max-width: none;
+  }
+}

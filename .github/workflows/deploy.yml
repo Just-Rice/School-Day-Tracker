@@ -1,0 +1,82 @@
+# Builds the app and publishes it to GitHub Pages on every push to main (or by hand from the
+# Actions tab). One-time setup: Settings -> Pages -> Source: GitHub Actions. See docs/deploy.md.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# one deployment at a time; let a running one finish instead of cancelling it halfway
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Validate school schedules
+        run: |
+          if [ -f tools/validate-schedules.mjs ]; then
+            node tools/validate-schedules.mjs
+          fi
+
+      - name: Build
+        env:
+          # Pages serves the site from /<repo-name>/. Set a BASE_PATH repository variable to
+          # override it, e.g. "/" when the site has a custom domain.
+          BASE_PATH: ${{ vars.BASE_PATH || format('/{0}/', github.event.repository.name) }}
+          # The Firebase web config is public by design (it ships in every page load); access is
+          # controlled by Firestore security rules and Auth's authorized domains, not by hiding
+          # these. They're repository *variables*, not secrets. Unset = local-only mode.
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+        run: |
+          # shown in Settings -> About, e.g. 0.1.0+3e7516e
+          export VITE_APP_VERSION="$(node -p "require('./package.json').version")+${GITHUB_SHA::7}"
+          npm run build
+          # Pages answers unknown paths with 404.html; the app uses hash routes, so serving the
+          # app there just lands mistyped links on the Today page instead of a GitHub error
+          cp dist/index.html dist/404.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
