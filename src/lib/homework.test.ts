@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Assignment, ClassInfo, DayInfo, ISODate } from '../types';
+import type { Assignment, ClassInfo, DayInfo, DayOverride, ISODate, SchoolSchedule } from '../types';
 import { addDays, isWeekend } from './dates';
+import { classesOnDay, normalizeSchedule, resolveDay } from './schedule';
 import {
   ASSIGNMENT_TYPES,
   PRIORITIES,
@@ -305,6 +306,47 @@ describe('nextMeetingDate', () => {
     expect(defaultDueDate('gym', '2026-10-09', getDay, classes)).toBe('2026-10-14');
     expect(defaultDueDate(null, TODAY, getDay, classes)).toBe('2026-10-09');
     expect(defaultDueDate('nope', '2026-10-09', getDay, classes)).toBe('2026-10-10');
+  });
+});
+
+describe('nextMeetingDate with the real 2026-27 calendars', () => {
+  const files = import.meta.glob<SchoolSchedule>('../../public/schools/*/schedule.json', { eager: true, import: 'default' });
+  const dayFn = (id: 'hsn' | 'cms', overrides: Record<ISODate, DayOverride> = {}) => {
+    const s = normalizeSchedule(files[`../../public/schools/${id}/schedule.json`]);
+    return (date: ISODate) => resolveDay(s, date, overrides);
+  };
+
+  // HSN rotates A-D; each period drops out one day: period 7 doesn't meet on A days, 6 not on B.
+  const hsn = [cls('eng', { periods: ['1'] }), cls('chem', { periods: ['7'] }), cls('gym', { periods: ['6'] })];
+
+  it('follows the HSN A/B/C/D rotation', () => {
+    const getDay = dayFn('hsn');
+    expect(getDay('2026-10-08').cycleDay?.id).toBe('A');
+    expect(nextMeetingDate('eng', '2026-10-08', getDay, hsn)).toBe('2026-10-09'); // Fri, B
+    expect(nextMeetingDate('chem', '2026-10-08', getDay, hsn)).toBe('2026-10-09'); // B has period 7
+    expect(nextMeetingDate('gym', '2026-10-08', getDay, hsn)).toBe('2026-10-12'); // skips B Friday and the weekend
+    expect(nextMeetingDate('chem', '2026-10-13', getDay, hsn)).toBe('2026-10-15'); // Wed is A, so Thu (B)
+  });
+
+  it('skips the NJEA days off', () => {
+    const getDay = dayFn('hsn');
+    expect(nextMeetingDate('eng', '2026-11-04', getDay, hsn)).toBe('2026-11-09');
+    expect(nextMeetingDate('chem', '2026-11-04', getDay, hsn)).toBe('2026-11-10'); // Mon Nov 9 is an A day
+  });
+
+  it("honors the user's own day overrides (snow day)", () => {
+    const getDay = dayFn('hsn', { '2026-10-09': { noSchool: true, name: 'Snow day' } });
+    const got = nextMeetingDate('eng', '2026-10-08', getDay, hsn);
+    expect(got && got > '2026-10-09').toBe(true);
+    expect(classesOnDay(getDay(got!), hsn).some((m) => m.cls?.id === 'eng')).toBe(true);
+  });
+
+  it('handles CMS alternating-day classes', () => {
+    const getDay = dayFn('cms');
+    const cms = [cls('sci', { periods: ['3'] }), cls('art', { periods: ['5'], days: ['B'] })];
+    expect(nextMeetingDate('sci', '2026-10-09', getDay, cms)).toBe('2026-10-12');
+    expect(nextMeetingDate('art', '2026-10-08', getDay, cms)).toBe('2026-10-09');
+    expect(nextMeetingDate('art', '2026-10-09', getDay, cms)).toBe('2026-10-13'); // Mon is A
   });
 });
 

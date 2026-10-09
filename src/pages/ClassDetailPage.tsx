@@ -276,15 +276,15 @@ function ClassDetail({ cls, onLeaving }: { cls: ClassInfo; onLeaving: () => void
             <p className="muted">Nothing due for this class{hw.done ? ` · ${hw.done} done` : ''}.</p>
           ) : (
             <>
-              <ul className="list hw-list">
+              <ul className="list cd-hw-list">
                 {hw.open.slice(0, 8).map((a) => {
                   const overdue = a.dueDate < today;
                   return (
-                    <li key={a.id} className="hw-row">
-                      <Link to={`/homework/${a.id}`} className="hw-title">
+                    <li key={a.id} className="cd-hw-row">
+                      <Link to={`/homework/${a.id}`} className="cd-hw-title">
                         {a.title || 'Untitled'}
                       </Link>
-                      <span className={'small nowrap ' + (overdue ? 'hw-overdue' : 'muted')}>
+                      <span className={'small nowrap ' + (overdue ? 'cd-hw-overdue' : 'muted')}>
                         {overdue ? 'Overdue · ' : ''}
                         {a.dueDate ? relativeDay(a.dueDate, today) : 'No due date'}
                         {a.dueTime ? `, ${formatTime(a.dueTime, clock)}` : ''}
@@ -293,14 +293,13 @@ function ClassDetail({ cls, onLeaving }: { cls: ClassInfo; onLeaving: () => void
                   );
                 })}
               </ul>
-              <p className="muted small hw-foot">
-                {hw.open.length > 8 && (
-                  <>
-                    <Link to="/homework">{hw.open.length - 8} more</Link> ·{' '}
-                  </>
-                )}
-                {hw.done} done
-              </p>
+              {(hw.open.length > 8 || hw.done > 0) && (
+                <p className="muted small cd-hw-foot">
+                  {hw.open.length > 8 && <Link to={`/homework?class=${encodeURIComponent(cls.id)}`}>{hw.open.length - 8} more</Link>}
+                  {hw.open.length > 8 && hw.done > 0 && ' · '}
+                  {hw.done > 0 && `${hw.done} done`}
+                </p>
+              )}
             </>
           )}
         </Card>
