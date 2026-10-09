@@ -1,6 +1,8 @@
+import { version } from '../../../package.json';
 import { Card } from '../ui';
 
-const VERSION: string = (import.meta.env.VITE_APP_VERSION as string | undefined) || '0.1.0';
+// a build can stamp its own version (e.g. a commit) through VITE_APP_VERSION
+const VERSION: string = (import.meta.env.VITE_APP_VERSION as string | undefined) || version;
 
 export default function AboutCard() {
   return (
@@ -26,7 +28,8 @@ export default function AboutCard() {
         </dd>
         <dt>Privacy</dt>
         <dd>
-          Your data is only visible to you. Signed in, it’s stored in your own private space in the app’s database, which no other account can read; otherwise it never leaves this browser. No ads, no tracking.
+          Your data is only visible to you. Signed in, it’s stored in your own private space in the app’s database, which no other account can read; otherwise it never leaves this browser. No ads, no
+          tracking.
         </dd>
       </dl>
       <p className="muted small acct-disclaimer">Not an official WW-P district app. Check school announcements for schedule changes.</p>

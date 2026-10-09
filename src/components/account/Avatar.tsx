@@ -10,8 +10,7 @@ function initials(name: string | null | undefined, email: string | null | undefi
 export default function Avatar({ name, email, photoURL, size = 44 }: { name?: string | null; email?: string | null; photoURL?: string | null; size?: number }) {
   const [broken, setBroken] = useState(false);
   const style = { width: size, height: size, fontSize: size * 0.38 };
-  if (photoURL && !broken)
-    return <img className="acct-avatar" src={photoURL} alt="" style={style} referrerPolicy="no-referrer" onError={() => setBroken(true)} />;
+  if (photoURL && !broken) return <img className="acct-avatar" src={photoURL} alt="" style={style} referrerPolicy="no-referrer" onError={() => setBroken(true)} />;
   return (
     <span className="acct-avatar acct-avatar-initials" style={style} aria-hidden>
       {initials(name, email)}

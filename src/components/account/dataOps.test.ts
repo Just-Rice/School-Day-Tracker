@@ -1,13 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Assignment, ClassInfo, Profile } from '../../types';
 import { LocalStore } from '../../data/localStore';
-import { applyImport, countPhrase, planDeviceCopy } from './dataOps';
+import { applyImport, countPhrase, planDeviceCopy, shouldOfferDeviceCopy } from './dataOps';
 
 // dataOps imports firestoreStore, which imports the Firebase SDK; keep it inert here
 vi.mock('../../data/firestoreStore', () => ({ copyLocalDataToAccount: vi.fn() }));
 
-const cls = (id: string, updatedAt = 1): ClassInfo => ({ id, name: id, teacher: { name: '' }, room: { label: '' }, periods: [], term: 'full', color: '#123456', links: [], customFields: [], createdAt: 1, updatedAt });
-const hw = (id: string, updatedAt = 1): Assignment => ({ id, classId: null, title: id, type: 'homework', dueDate: '2026-10-10', priority: 'medium', status: 'todo', links: [], subtasks: [], createdAt: 1, updatedAt });
+const cls = (id: string, updatedAt = 1): ClassInfo => ({
+  id,
+  name: id,
+  teacher: { name: '' },
+  room: { label: '' },
+  periods: [],
+  term: 'full',
+  color: '#123456',
+  links: [],
+  customFields: [],
+  createdAt: 1,
+  updatedAt,
+});
+const hw = (id: string, updatedAt = 1): Assignment => ({
+  id,
+  classId: null,
+  title: id,
+  type: 'homework',
+  dueDate: '2026-10-10',
+  priority: 'medium',
+  status: 'todo',
+  links: [],
+  subtasks: [],
+  createdAt: 1,
+  updatedAt,
+});
 const profile = (p: Partial<Profile> = {}): Profile => ({ schoolId: 'hsn', theme: 'system', clock: '12h', dayOverrides: {}, onboarded: true, ...p });
 
 function read(store: LocalStore) {
@@ -70,5 +94,32 @@ describe('countPhrase', () => {
     expect(countPhrase(1, 0)).toBe('1 class');
     expect(countPhrase(2, 1)).toBe('2 classes and 1 assignment');
     expect(countPhrase(0, 0)).toBe('nothing new');
+  });
+});
+
+describe('shouldOfferDeviceCopy', () => {
+  const base = { accountStore: true, loading: false, accountItems: 0, localItems: 3, dismissed: false };
+  it('offers to fill an empty account from this device', () => {
+    expect(shouldOfferDeviceCopy(base)).toBe(true);
+  });
+  it('stays quiet otherwise', () => {
+    expect(shouldOfferDeviceCopy({ ...base, accountStore: false })).toBe(false);
+    expect(shouldOfferDeviceCopy({ ...base, loading: true })).toBe(false);
+    expect(shouldOfferDeviceCopy({ ...base, accountItems: 1 })).toBe(false);
+    expect(shouldOfferDeviceCopy({ ...base, localItems: 0 })).toBe(false);
+    expect(shouldOfferDeviceCopy({ ...base, dismissed: true })).toBe(false);
+  });
+});
+
+describe('LocalStore.saveProfile', () => {
+  it('deletes a field passed explicitly as undefined, like the Firestore store', async () => {
+    localStorage.clear();
+    const store = new LocalStore('test');
+    await store.saveProfile(profile({ grade: 9, customSchedule: { schoolId: 'hsn' } as Profile['customSchedule'] }));
+    await store.saveProfile({ customSchedule: undefined, dayOverrides: {} });
+    const p = store.snapshot().profile!;
+    expect('customSchedule' in p).toBe(false);
+    expect(p.grade).toBe(9);
+    expect(p.dayOverrides).toEqual({});
   });
 });

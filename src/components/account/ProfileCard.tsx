@@ -55,22 +55,25 @@ export default function ProfileCard() {
   return (
     <Card title="Profile" className="acct-card">
       <div className="stack acct-sections">
-        <form className="acct-inline-form" onSubmit={saveName}>
-          <Field label="Your name" hint="Only shown to you, in the app.">
-            <input
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setNameSaved(false);
-              }}
-              autoComplete="given-name"
-              maxLength={80}
-              placeholder="Your first name"
-            />
-          </Field>
-          <Button type="submit" disabled={!dirty}>
-            {nameSaved && !dirty ? 'Saved' : 'Save'}
-          </Button>
+        <form onSubmit={saveName}>
+          <div className="acct-inline-form">
+            <Field label="Your name">
+              <input
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setNameSaved(false);
+                }}
+                autoComplete="given-name"
+                maxLength={80}
+                placeholder="Your first name"
+              />
+            </Field>
+            <Button type="submit" disabled={!dirty}>
+              {nameSaved && !dirty ? 'Saved' : 'Save'}
+            </Button>
+          </div>
+          <p className="field-hint acct-hint">Only shown to you, in the app.</p>
         </form>
 
         <fieldset className="acct-fieldset">
@@ -111,16 +114,25 @@ export default function ProfileCard() {
       >
         <ul className="acct-bullets">
           <li>
-            Your {classes.length} {classes.length === 1 ? 'class stays' : 'classes stay'}, with their periods and room numbers.
-            {' '}Check their periods against {next?.id === 'other' ? 'your new bell schedule' : `${next?.short}’s bell schedule`} afterwards.
+            Your {classes.length} {classes.length === 1 ? 'class stays' : 'classes stay'}, with their periods and room numbers. Check their periods against{' '}
+            {next?.id === 'other' ? 'your new bell schedule' : `${next?.short}’s bell schedule`} afterwards.
           </li>
           {mappedRooms > 0 && (
             <li>
-              {mappedRooms} {mappedRooms === 1 ? 'room is' : 'rooms are'} linked to the {cur.short} map, so {mappedRooms === 1 ? 'it' : 'they'} won’t show on {next?.hasMap ? `the ${next.short} map` : 'a map'}. Re-pick the room in each class to fix that.
+              {mappedRooms} {mappedRooms === 1 ? 'room is' : 'rooms are'} linked to the {cur.short} map, so {mappedRooms === 1 ? 'it' : 'they'} won’t show on{' '}
+              {next?.hasMap ? `the ${next.short} map` : 'a map'}. Re-pick the room in each class to fix that.
             </li>
           )}
-          {custom && <li>Your custom bell schedule was made for {cur.short} and won’t be used at {next?.short ?? 'the new school'} (it’s kept if you switch back).</li>}
-          {profile.grade !== undefined && pendingSchool && gradeFor(pendingSchool, profile.grade) === undefined && <li>Your grade will be cleared ({next?.short} doesn’t have {gradeLabel(profile.grade)}).</li>}
+          {custom && (
+            <li>
+              Your custom bell schedule was made for {cur.short} and won’t be used at {next?.short ?? 'the new school'} (it’s kept if you switch back).
+            </li>
+          )}
+          {profile.grade !== undefined && pendingSchool && gradeFor(pendingSchool, profile.grade) === undefined && (
+            <li>
+              Your grade will be cleared ({next?.short} doesn’t have {gradeLabel(profile.grade)}).
+            </li>
+          )}
         </ul>
       </Modal>
     </Card>

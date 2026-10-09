@@ -90,9 +90,7 @@ export default function ImportBackupModal({ backup, fileName, onClose, onDone }:
               <input type="radio" name="import-mode" checked={mode === 'merge'} onChange={() => setMode('merge')} />
               <span>
                 <strong>Merge</strong>
-                <span className="muted small">
-                  Keep everything you have and add what’s in the file. When both have the same class or assignment, the more recently edited one wins.
-                </span>
+                <span className="muted small">Keep everything you have and add what’s in the file. When both have the same class or assignment, the more recently edited one wins.</span>
               </span>
             </label>
             <label className={'acct-mode' + (mode === 'replace' ? ' is-selected' : '')}>

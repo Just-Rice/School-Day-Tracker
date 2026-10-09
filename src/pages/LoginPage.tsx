@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { useAppearance } from '../components/Layout';
@@ -11,6 +11,9 @@ import { useData } from '../data/DataProvider';
 import { SCHOOLS } from '../schools';
 import './account.css';
 
+/** Settings signs out by coming here with this state, so the app never flashes the welcome screen */
+export const SIGN_OUT_STATE = { signOut: true };
+
 /** where to go after signing in: the page that sent us here, never back to /login */
 export function returnPath(state: unknown): string {
   const from = (state as { from?: unknown } | null)?.from;
@@ -19,7 +22,7 @@ export function returnPath(state: unknown): string {
 
 export default function LoginPage() {
   useAppearance();
-  const { user, loading, firebaseEnabled, signInWithGoogle, redirectError } = useAuth();
+  const { user, loading, firebaseEnabled, signInWithGoogle, redirectError, signOut } = useAuth();
   const { profile } = useData();
   const loc = useLocation();
   const navigate = useNavigate();
@@ -27,12 +30,52 @@ export default function LoginPage() {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const accent = SCHOOLS[profile.schoolId]?.color;
+  const [signingOut, setSigningOut] = useState(() => (loc.state as { signOut?: unknown } | null)?.signOut === true);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
-  if (loading) {
+  useEffect(() => {
+    if (!signingOut) return;
+    let live = true;
+    signOut().then(
+      () => {
+        if (!live) return;
+        setSigningOut(false);
+        // drop the sign-out request from history so signing in again here doesn't repeat it
+        navigate('/login', { replace: true });
+      },
+      (e: unknown) => {
+        if (!live) return;
+        setSigningOut(false);
+        setSignOutError((e as Error).message || 'Could not sign out. Try again.');
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [signingOut, signOut, navigate]);
+
+  if (loading || signingOut) {
     return (
       <div className="center-screen">
-        <Spinner label="Checking your sign-in…" />
+        <Spinner label={signingOut ? 'Signing out…' : 'Checking your sign-in…'} />
       </div>
+    );
+  }
+  if (user && signOutError) {
+    return (
+      <AuthShell accent={accent}>
+        <Card>
+          <h1 className="acct-title">Couldn’t sign out</h1>
+          <div className="banner banner-error acct-banner" role="alert">
+            {signOutError}
+          </div>
+          <div className="row acct-actions">
+            <Link className="btn btn-primary" to="/settings" replace>
+              Back to Settings
+            </Link>
+          </div>
+        </Card>
+      </AuthShell>
     );
   }
   if (user) return <Navigate to={from} replace />;
@@ -42,8 +85,13 @@ export default function LoginPage() {
       <AuthShell accent={accent}>
         <Card>
           <h1 className="acct-title">Accounts aren’t set up here</h1>
-          <p>This copy of School Day Tracker runs in <strong>local mode</strong>: your classes, homework and settings are saved in this browser on this device only. Nothing is sent anywhere.</p>
-          <p className="muted small">To move your data to another device, use <strong>Settings → Export backup</strong> here and <strong>Import backup</strong> there. Signing in and syncing work on copies of the app that have a Firebase project set up.</p>
+          <p>
+            This copy of School Day Tracker runs in <strong>local mode</strong>: your classes, homework and settings are saved in this browser on this device only. Nothing is sent anywhere.
+          </p>
+          <p className="muted small">
+            To move your data to another device, use <strong>Settings → Export backup</strong> here and <strong>Import backup</strong> there. Signing in and syncing work on copies of the app that have
+            a Firebase project set up.
+          </p>
           <div className="row acct-actions">
             <Link className="btn btn-primary" to={from} replace>
               Back to the app

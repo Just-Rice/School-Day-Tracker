@@ -98,7 +98,13 @@ function longText(v: unknown, max = 20000): string | undefined {
   return isStr(v) && v.trim() ? v.slice(0, max) : undefined;
 }
 function strList(v: unknown, max = 50): string[] {
-  return Array.isArray(v) ? v.filter(isStr).map((s) => s.trim()).filter(Boolean).slice(0, max) : [];
+  return Array.isArray(v)
+    ? v
+        .filter(isStr)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, max)
+    : [];
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;

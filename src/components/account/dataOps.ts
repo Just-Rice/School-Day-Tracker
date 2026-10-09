@@ -55,6 +55,15 @@ export async function copyDeviceToAccount(uid: string, current: CurrentData): Pr
   return { classes: plan.classes.length, assignments: plan.assignments.length };
 }
 
+/**
+ * Whether to offer copying this device's local data into the account right after sign-in:
+ * only into an empty account (so it never looks like the account lost something), and only
+ * when there's something to copy and the student hasn't said no.
+ */
+export function shouldOfferDeviceCopy(s: { accountStore: boolean; loading: boolean; accountItems: number; localItems: number; dismissed: boolean }): boolean {
+  return s.accountStore && !s.loading && !s.dismissed && s.accountItems === 0 && s.localItems > 0;
+}
+
 /** "N classes and M assignments" without the zero parts */
 export function countPhrase(classes: number, assignments: number): string {
   const parts: string[] = [];

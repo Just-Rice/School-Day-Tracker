@@ -67,7 +67,11 @@ describe('parseBackup', () => {
   const file = (o: Record<string, unknown>) => JSON.stringify({ app: BACKUP_APP, version: 1, exportedAt: 'x', ...o });
 
   it('round-trips a backup', () => {
-    const data = { profile: profile({ grade: 10, displayName: 'Ana', dayOverrides: { '2026-12-01': { noSchool: true, name: 'Snow day' } } }), classes: [cls('a', 5)], assignments: [hw('h', 6, { classId: 'a', subtasks: [{ id: 's', text: 'Do it', done: true }] })] };
+    const data = {
+      profile: profile({ grade: 10, displayName: 'Ana', dayOverrides: { '2026-12-01': { noSchool: true, name: 'Snow day' } } }),
+      classes: [cls('a', 5)],
+      assignments: [hw('h', 6, { classId: 'a', subtasks: [{ id: 's', text: 'Do it', done: true }] })],
+    };
     const parsed = parseBackup(JSON.stringify(makeBackup(data)));
     expect(parsed.profile).toEqual(data.profile);
     expect(parsed.classes).toEqual(data.classes);
@@ -114,7 +118,14 @@ describe('parseBackup', () => {
   });
 
   it('keeps a well-formed custom schedule', () => {
-    const customSchedule = { schoolId: 'hsn', schoolYear: '2026-27', cycle: { mode: 'rotation', days: [{ id: 'A', name: 'A' }] }, periods: [], bells: [{ id: 'r', name: 'Regular', days: { '*': [] } }], calendar: { firstDay: '2026-09-01', lastDay: '2027-06-20', noSchool: [], specialDays: [] } };
+    const customSchedule = {
+      schoolId: 'hsn',
+      schoolYear: '2026-27',
+      cycle: { mode: 'rotation', days: [{ id: 'A', name: 'A' }] },
+      periods: [],
+      bells: [{ id: 'r', name: 'Regular', days: { '*': [] } }],
+      calendar: { firstDay: '2026-09-01', lastDay: '2027-06-20', noSchool: [], specialDays: [] },
+    };
     const parsed = parseBackup(file({ profile: { ...profile(), customSchedule } }));
     expect(parsed.profile?.customSchedule).toEqual(customSchedule);
   });
@@ -122,8 +133,23 @@ describe('parseBackup', () => {
 
 describe('sanitizeClass', () => {
   it('fills defaults, fixes bad values and drops unknown fields', () => {
-    const c = sanitizeClass({ id: 'x', name: ' Bio ', teacher: 'Mr. B', room: null, periods: ['1', 2, ''], term: 'Q9', color: 'red', links: [{ url: 'https://a.b' }, { label: 'no url' }], hacker: true, createdAt: -1 }, 50);
-    expect(c).toEqual({ id: 'x', name: 'Bio', teacher: { name: '' }, room: { label: '' }, periods: ['1'], term: 'full', color: '#4b5563', links: [{ label: '', url: 'https://a.b' }], customFields: [], createdAt: 50, updatedAt: 50 });
+    const c = sanitizeClass(
+      { id: 'x', name: ' Bio ', teacher: 'Mr. B', room: null, periods: ['1', 2, ''], term: 'Q9', color: 'red', links: [{ url: 'https://a.b' }, { label: 'no url' }], hacker: true, createdAt: -1 },
+      50,
+    );
+    expect(c).toEqual({
+      id: 'x',
+      name: 'Bio',
+      teacher: { name: '' },
+      room: { label: '' },
+      periods: ['1'],
+      term: 'full',
+      color: '#4b5563',
+      links: [{ label: '', url: 'https://a.b' }],
+      customFields: [],
+      createdAt: 50,
+      updatedAt: 50,
+    });
   });
 
   it('caps very long text', () => {

@@ -17,12 +17,10 @@ const MESSAGES: Record<string, string> = {
   'auth/network-request-failed': 'Couldn’t reach the sign-in service. Check your internet connection and try again.',
   'auth/too-many-requests': 'Too many attempts. Wait a few minutes and try again (or reset your password).',
   'auth/user-disabled': 'This account has been turned off.',
-  'auth/account-exists-with-different-credential':
-    'An account with this email already exists with a different sign-in method. Sign in the way you did before.',
+  'auth/account-exists-with-different-credential': 'An account with this email already exists with a different sign-in method. Sign in the way you did before.',
   'auth/operation-not-allowed': 'This sign-in method isn’t turned on for this app yet (enable it in the Firebase console under Authentication → Sign-in method).',
   'auth/admin-restricted-operation': 'This sign-in method isn’t turned on for this app yet.',
-  'auth/unauthorized-domain':
-    'This website isn’t allowed to use sign-in yet. The app’s owner needs to add this domain in the Firebase console (Authentication → Settings → Authorized domains).',
+  'auth/unauthorized-domain': 'This website isn’t allowed to use sign-in yet. The app’s owner needs to add this domain in the Firebase console (Authentication → Settings → Authorized domains).',
   'auth/invalid-api-key': 'This copy of the app has an invalid Firebase API key, so sign-in can’t work. Check the VITE_FIREBASE_* settings.',
   'auth/web-storage-unsupported': 'Sign-in needs cookies and site storage. Turn them on for this site (or leave private browsing) and try again.',
   'auth/operation-not-supported-in-this-environment': 'This browser can’t open the sign-in window. Try another browser, or use email and password.',

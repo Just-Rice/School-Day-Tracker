@@ -2,20 +2,7 @@
 //   users/{uid}                    the Profile fields at top level (+ updatedAt)
 //   users/{uid}/classes/{id}       one ClassInfo per document
 //   users/{uid}/assignments/{id}   one Assignment per document
-import {
-  collection,
-  deleteDoc,
-  deleteField,
-  doc,
-  getDocs,
-  onSnapshot,
-  setDoc,
-  writeBatch,
-  type DocumentData,
-  type FieldValue,
-  type Firestore,
-  type QueryDocumentSnapshot,
-} from 'firebase/firestore';
+import { collection, deleteDoc, deleteField, doc, getDocs, onSnapshot, setDoc, writeBatch, type DocumentData, type FieldValue, type Firestore, type QueryDocumentSnapshot } from 'firebase/firestore';
 import type { Assignment, ClassInfo, Profile } from '../types';
 import { getDb } from '../firebase';
 import { clean, type DataStore, type Unsubscribe } from './store';
@@ -231,8 +218,12 @@ async function commitAll(db: Firestore, ops: Op[]): Promise<void> {
 }
 
 export interface AccountCopy {
-  /** fields to write into the account's profile (see profileMergeFields in lib/backup); omit to leave it */
-  profile?: Partial<Profile>;
+  /**
+   * fields to write into the account's profile; null/omitted leaves it alone. Pass
+   * profileMergeFields(local, account) from lib/backup to only fill in what the account lacks
+   * (copying a whole local profile would overwrite the account's school and settings).
+   */
+  profile?: Partial<Profile> | null;
   classes: ClassInfo[];
   assignments: Assignment[];
 }

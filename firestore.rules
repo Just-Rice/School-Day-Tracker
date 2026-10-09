@@ -1,0 +1,121 @@
+rules_version = '2';
+
+// School Day Tracker. Each student's data lives under users/{uid}, and only that signed-in
+// student can read or write it:
+//   users/{uid}                    profile (the Profile fields at top level, see src/types.ts)
+//   users/{uid}/classes/{id}       one ClassInfo
+//   users/{uid}/assignments/{id}   one Assignment
+// Everything else is denied. Deploy with: firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Field checks. Fields the app treats as optional may be missing; when present they must
+    // have the right type and a sane size. Limits are generous: they stop abuse, not students.
+    function optStr(d, k, max) {
+      return !(k in d) || (d[k] is string && d[k].size() <= max);
+    }
+    function reqStr(d, k, max) {
+      return k in d && d[k] is string && d[k].size() > 0 && d[k].size() <= max;
+    }
+    function optList(d, k, max) {
+      return !(k in d) || (d[k] is list && d[k].size() <= max);
+    }
+    function optMap(d, k) {
+      return !(k in d) || d[k] is map;
+    }
+    function optNum(d, k) {
+      return !(k in d) || d[k] is number;
+    }
+    function optBool(d, k) {
+      return !(k in d) || d[k] is bool;
+    }
+    function optOneOf(d, k, values) {
+      return !(k in d) || d[k] in values;
+    }
+    function smallDoc(d) {
+      return d.keys().size() < 60;
+    }
+
+    // request.resource.data is the whole document as it would be after the write (merges included)
+    function validProfile(d) {
+      return smallDoc(d)
+        && d.keys().hasOnly(['displayName', 'schoolId', 'grade', 'theme', 'clock', 'customSchedule', 'dayOverrides', 'onboarded', 'updatedAt'])
+        && optStr(d, 'displayName', 100)
+        && optOneOf(d, 'schoolId', ['hsn', 'cms', 'other'])
+        && (!('grade' in d) || (d.grade is int && d.grade >= 1 && d.grade <= 12))
+        && optOneOf(d, 'theme', ['system', 'light', 'dark'])
+        && optOneOf(d, 'clock', ['12h', '24h'])
+        && optMap(d, 'customSchedule')
+        && (!('dayOverrides' in d) || (d.dayOverrides is map && d.dayOverrides.size() <= 1000))
+        && optBool(d, 'onboarded')
+        && optNum(d, 'updatedAt');
+    }
+
+    function validClass(id, d) {
+      return smallDoc(d)
+        && d.get('id', null) == id
+        && reqStr(d, 'name', 300)
+        && optStr(d, 'courseCode', 100)
+        && optStr(d, 'section', 100)
+        && optStr(d, 'level', 20)
+        && optMap(d, 'teacher')
+        && optMap(d, 'room')
+        && optList(d, 'periods', 50)
+        && optList(d, 'days', 50)
+        && optList(d, 'altRooms', 50)
+        && optStr(d, 'term', 10)
+        && optNum(d, 'credits')
+        && optStr(d, 'color', 32)
+        && optStr(d, 'icon', 32)
+        && optList(d, 'links', 100)
+        && optStr(d, 'materials', 50000)
+        && optStr(d, 'gradingPolicy', 50000)
+        && optStr(d, 'grade', 50)
+        && optStr(d, 'notes', 50000)
+        && optList(d, 'customFields', 100)
+        && optBool(d, 'archived')
+        && optNum(d, 'createdAt')
+        && optNum(d, 'updatedAt');
+    }
+
+    function validAssignment(id, d) {
+      return smallDoc(d)
+        && d.get('id', null) == id
+        && reqStr(d, 'title', 500)
+        && d.get('dueDate', null) is string
+        && d.dueDate.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && (!('classId' in d) || d.classId == null || (d.classId is string && d.classId.size() <= 200))
+        && optOneOf(d, 'type', ['homework', 'test', 'quiz', 'project', 'essay', 'reading', 'lab', 'other'])
+        && optStr(d, 'dueTime', 5)
+        && optOneOf(d, 'priority', ['low', 'medium', 'high'])
+        && optOneOf(d, 'status', ['todo', 'in_progress', 'done'])
+        && optStr(d, 'notes', 50000)
+        && optList(d, 'links', 100)
+        && optList(d, 'subtasks', 300)
+        && optNum(d, 'estimatedMinutes')
+        && optNum(d, 'completedAt')
+        && optNum(d, 'createdAt')
+        && optNum(d, 'updatedAt');
+    }
+
+    match /users/{uid} {
+      allow get: if isOwner(uid);
+      allow create, update: if isOwner(uid) && validProfile(request.resource.data);
+      allow delete: if isOwner(uid);
+    }
+
+    match /users/{uid}/{collection}/{docId} {
+      allow read, delete: if isOwner(uid) && collection in ['classes', 'assignments'];
+      allow create, update: if isOwner(uid) && (
+        (collection == 'classes' && validClass(docId, request.resource.data)) ||
+        (collection == 'assignments' && validAssignment(docId, request.resource.data))
+      );
+    }
+
+    // anything else (other users, other collections, listing users) is denied
+  }
+}

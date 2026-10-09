@@ -1,23 +1,8 @@
 // Firebase setup. The web config comes from VITE_FIREBASE_* env vars (see .env.example).
 // Without them the app runs in local-only mode and nothing here is ever initialized.
 import { getApp, getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app';
-import {
-  browserLocalPersistence,
-  browserPopupRedirectResolver,
-  indexedDBLocalPersistence,
-  inMemoryPersistence,
-  initializeAuth,
-  useDeviceLanguage,
-  type Auth,
-} from 'firebase/auth';
-import {
-  initializeFirestore,
-  memoryLocalCache,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-  type Firestore,
-  type FirestoreSettings,
-} from 'firebase/firestore';
+import { browserLocalPersistence, browserPopupRedirectResolver, indexedDBLocalPersistence, inMemoryPersistence, initializeAuth, useDeviceLanguage, type Auth } from 'firebase/auth';
+import { initializeFirestore, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager, type Firestore, type FirestoreSettings } from 'firebase/firestore';
 
 const env = import.meta.env;
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');

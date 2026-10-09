@@ -43,17 +43,7 @@ vi.mock('firebase/firestore', () => ({
 }));
 vi.mock('../firebase', () => ({ getDb: () => ({}) }));
 
-import {
-  BATCH_LIMIT,
-  chunk,
-  copyLocalDataToAccount,
-  createFirestoreStore,
-  deleteAllUserData,
-  friendlyFirestoreError,
-  fromFirestoreProfile,
-  settleWrite,
-  toFirestoreProfile,
-} from './firestoreStore';
+import { BATCH_LIMIT, chunk, copyLocalDataToAccount, createFirestoreStore, deleteAllUserData, friendlyFirestoreError, fromFirestoreProfile, settleWrite, toFirestoreProfile } from './firestoreStore';
 
 const DEL = Symbol('delete');
 

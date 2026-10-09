@@ -8,8 +8,11 @@ import GoogleButton from '../components/account/GoogleButton';
 import SchoolPicker from '../components/account/SchoolPicker';
 import { isCancelled } from '../components/account/authErrors';
 import { gradeFor, gradeLabel, gradeOptions } from '../components/account/grades';
-import { clearDraft, loadDraft, saveDraft, type OnboardingDraft } from '../components/account/onboardingDraft';
+import { clearDraft, draftFromProfile, loadDraft, saveDraft, type OnboardingDraft } from '../components/account/onboardingDraft';
+import { copyDeviceToAccount, countPhrase } from '../components/account/dataOps';
+import { dismissDeviceCopy, useLocalCounts } from '../components/account/useDeviceCopy';
 import { useData } from '../data/DataProvider';
+import { localStore } from '../data/localStore';
 import { SCHOOLS } from '../schools';
 import './account.css';
 
@@ -18,9 +21,12 @@ const LOGIN_STATE = { from: '/welcome' };
 export default function OnboardingPage() {
   useAppearance();
   const { user, loading: authLoading, firebaseEnabled, signInWithGoogle } = useAuth();
-  const { profile, classes, loading, saveProfile } = useData();
+  const { store, profile, classes, assignments, loading, saveProfile } = useData();
   const navigate = useNavigate();
-  const [draft, setDraft] = useState<OnboardingDraft>(() => loadDraft() ?? { step: 1, schoolId: 'hsn', displayName: '' });
+  // someone who set the app up without an account and then signed in starts from those choices
+  const [draft, setDraft] = useState<OnboardingDraft>(() => loadDraft() ?? draftFromProfile(localStore.snapshot().profile) ?? { step: 1, schoolId: 'hsn', displayName: '' });
+  const local = useLocalCounts();
+  const [copyLocal, setCopyLocal] = useState(true);
   const [finishing, setFinishing] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,20 +68,28 @@ export default function OnboardingPage() {
   const hasAccountStep = firebaseEnabled && (!user || draft.step === 3);
   const total = hasAccountStep ? 3 : 2;
   const grades = gradeOptions(draft.schoolId);
-  const nextPath = classes.length ? '/' : '/classes/new';
+  const localItems = local.classes + local.assignments;
+  // signed in on a device that has data from before: offer to bring it along
+  const canCopy = !!user && store.kind === 'firestore' && localItems > 0;
+  const willCopy = canCopy && copyLocal;
+  const hasClasses = classes.length > 0 || (willCopy && local.classes > 0);
 
   const finish = async () => {
     setFinishing(true);
     setError(null);
     try {
-      await saveProfile({
+      const choices = {
         schoolId: draft.schoolId,
         grade: gradeFor(draft.schoolId, draft.grade),
         displayName: draft.displayName.trim() || undefined,
         onboarded: true,
-      });
+      };
+      await saveProfile(choices);
+      if (user && willCopy) await copyDeviceToAccount(user.uid, { profile: { ...profile, ...choices }, classes, assignments });
+      // they said no here, so don't ask again with the banner
+      else if (user && canCopy) dismissDeviceCopy(user.uid);
       clearDraft();
-      navigate(nextPath, { replace: true, state: { welcome: true } });
+      navigate(hasClasses ? '/' : '/classes/new', { replace: true, state: { welcome: true } });
     } catch (e) {
       setFinishing(false);
       setError((e as Error).message || 'Could not save your choices. Try again.');
@@ -94,11 +108,20 @@ export default function OnboardingPage() {
     }
   };
 
-  const finishLabel = finishing ? 'Saving…' : classes.length ? 'Finish' : 'Next: add your classes';
-  const nextNote = !classes.length && (
-    <p className="muted small acct-next-note">
-      Next you’ll add your first class: its name, period, room and teacher. Each one takes about a minute.
-    </p>
+  const finishLabel = finishing ? 'Saving…' : hasClasses ? 'Finish' : 'Next: add your classes';
+  const copyOption = canCopy && (
+    <label className="acct-copy small">
+      <input type="checkbox" checked={copyLocal} onChange={(e) => setCopyLocal(e.target.checked)} disabled={finishing} />
+      <span>
+        <strong>Copy this device’s {countPhrase(local.classes, local.assignments)}</strong> to your account. They were saved here before you signed in.
+      </span>
+    </label>
+  );
+  const nextNote = (
+    <>
+      {copyOption}
+      {!hasClasses && <p className="muted small acct-next-note">Next you’ll add your first class: its name, period, room and teacher. Each one takes about a minute.</p>}
+    </>
   );
 
   let body;

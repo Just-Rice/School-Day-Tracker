@@ -1,0 +1,527 @@
+/* Sign in, welcome (onboarding) and settings. Prefixed acct- / school- to stay out of the way
+   of other features' styles. */
+
+/* ---------------------------------------------------------------------------- full-screen frame */
+/* AuthShell sets --school on .acct-screen (e.g. the school picked during onboarding), so the
+   accent tokens are re-derived here; :root computed them from the root's --school. */
+.acct-screen {
+  --accent: var(--school);
+  --accent-soft: color-mix(in srgb, var(--school) 12%, transparent);
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: max(24px, env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--school) 16%, var(--bg)) 0, var(--bg) 280px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .acct-screen {
+    --accent: color-mix(in srgb, var(--school) 70%, white);
+    --accent-soft: color-mix(in srgb, var(--school) 25%, transparent);
+  }
+}
+:root[data-theme='dark'] .acct-screen {
+  --accent: color-mix(in srgb, var(--school) 70%, white);
+  --accent-soft: color-mix(in srgb, var(--school) 25%, transparent);
+}
+.acct-panel {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: min(6vh, 48px);
+}
+.acct-panel-wide {
+  max-width: 600px;
+}
+.acct-panel > .card {
+  padding: 22px 20px;
+}
+.acct-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+.acct-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--school);
+  color: #fff;
+  font-size: 1.15rem;
+}
+.acct-title {
+  font-size: 1.45rem;
+  margin-bottom: 4px;
+}
+.acct-step-title:focus {
+  outline: none;
+}
+.acct-actions {
+  margin-top: 14px;
+}
+.acct-banner {
+  margin: 0;
+}
+.acct-note {
+  margin: 0;
+}
+.acct-link {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.acct-link.small {
+  font-size: 0.85rem;
+}
+
+/* ---------------------------------------------------------------------------- sign in */
+.acct-google-block {
+  margin-top: 16px;
+  gap: 10px;
+}
+.acct-google {
+  width: 100%;
+  min-height: 46px;
+  gap: 10px;
+  font-size: 1rem;
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--text) 25%, var(--border));
+}
+.acct-google svg {
+  flex: none;
+}
+.acct-google[aria-busy='true'] {
+  cursor: progress;
+}
+.acct-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 14px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.acct-or::before,
+.acct-or::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+.acct-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+  gap: 2px;
+}
+.acct-tabs [role='tab'] {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 4px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.acct-tabs [role='tab']:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.acct-tabs [role='tab'][aria-selected='true'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.acct-form {
+  gap: 12px;
+}
+.acct-form-extras {
+  justify-content: space-between;
+}
+.acct-submit {
+  width: 100%;
+  min-height: 44px;
+}
+.acct-skip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------------------- onboarding */
+.acct-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.acct-progress-dot {
+  width: 28px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+}
+.acct-progress-dot.is-done {
+  background: var(--accent);
+}
+.acct-progress .small {
+  margin-left: 6px;
+}
+.acct-step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.acct-step > p {
+  margin: 0;
+}
+.acct-step-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+.acct-step-foot .btn-primary {
+  min-width: 120px;
+}
+.acct-choices {
+  gap: 10px;
+}
+.acct-choices .btn {
+  width: 100%;
+  min-height: 44px;
+}
+.acct-next-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.acct-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.acct-copy input {
+  margin: 1px 0 0;
+}
+
+/* school cards (radio group) */
+.school-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.school-option {
+  --opt: var(--school);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+.school-option:hover {
+  border-color: color-mix(in srgb, var(--opt) 50%, var(--border));
+}
+.school-option.is-selected {
+  border-color: var(--opt);
+  background: color-mix(in srgb, var(--opt) 9%, var(--surface));
+  box-shadow: 0 0 0 1px var(--opt);
+}
+.school-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* the radio stays in the accessibility tree and keyboard order; the card shows the state */
+.school-option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.school-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--opt);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+.school-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.school-text strong {
+  line-height: 1.25;
+}
+.school-option.is-selected .school-text strong::after {
+  content: ' ✓';
+  color: var(--opt);
+}
+:root[data-theme='dark'] .school-option.is-selected .school-text strong::after {
+  color: color-mix(in srgb, var(--opt) 60%, white);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .school-option.is-selected .school-text strong::after {
+    color: color-mix(in srgb, var(--opt) 60%, white);
+  }
+}
+.school-options-compact .school-option {
+  padding: 8px 10px;
+  gap: 10px;
+}
+.school-options-compact .school-mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+}
+
+/* ---------------------------------------------------------------------------- settings */
+.acct-card > .card-head {
+  margin-bottom: 12px;
+}
+.acct-sections {
+  gap: 16px;
+}
+.acct-who {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.acct-who-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 180px;
+  overflow-wrap: anywhere;
+}
+.acct-who-text .chip {
+  margin-top: 4px;
+}
+.acct-avatar {
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--accent-soft);
+}
+.acct-avatar-initials {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  font-weight: 700;
+}
+.acct-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.acct-segmented {
+  max-width: 100%;
+}
+.acct-segmented button {
+  min-height: 38px;
+  padding: 6px 14px;
+}
+.acct-segmented button:focus-visible {
+  outline-offset: -3px;
+}
+.acct-inline-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.acct-inline-form .field {
+  flex: 1;
+}
+.acct-hint {
+  margin: 4px 0 0;
+}
+.acct-fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.acct-fieldset > legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+.acct-bullets {
+  margin: 0;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.acct-file {
+  overflow-wrap: anywhere;
+}
+.acct-modes {
+  gap: 8px;
+}
+.acct-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.acct-mode > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.acct-mode input {
+  margin-top: 2px;
+}
+/* native checkboxes and radios: the global input padding shrinks them, so size them here */
+.acct-mode input,
+.acct-copy input,
+.acct-screen .check input,
+.acct-card .check input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+}
+.acct-mode.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.acct-disclaimer {
+  margin: 12px 0 0;
+}
+
+/* Data card: one row per action, text on the left, button on the right (stacked on phones) */
+.acct-data {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.acct-data > li {
+  display: flex;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.acct-data > li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.acct-data > li:last-child {
+  padding-bottom: 0;
+}
+.acct-data-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.acct-data-text p {
+  margin: 0;
+}
+.acct-data-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.acct-data-result {
+  flex-basis: 100%;
+}
+.acct-data .acct-data-wrap {
+  flex-wrap: wrap;
+}
+.acct-error-text {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger);
+}
+.acct-danger-title {
+  color: var(--danger);
+}
+@media (max-width: 520px) {
+  .acct-data > li {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .acct-data-actions {
+    justify-content: flex-start;
+  }
+  .acct-inline-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .acct-who-action {
+    width: 100%;
+  }
+}
+
+/* "copy this device's data" banner shown at the top of the app */
+.acct-import-banner {
+  max-width: 920px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px 14px;
+  flex-wrap: wrap;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+.acct-import-banner p {
+  margin: 0;
+  flex: 1 1 260px;
+}
+.acct-import-banner .row {
+  flex: none;
+}

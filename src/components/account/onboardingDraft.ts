@@ -1,6 +1,6 @@
 // The first-run choices, kept in sessionStorage while the student signs in (a Google redirect
 // or a trip to /login would otherwise throw them away).
-import type { SchoolId } from '../../types';
+import type { Profile, SchoolId } from '../../types';
 
 export interface OnboardingDraft {
   step: 1 | 2 | 3;
@@ -40,4 +40,10 @@ export function clearDraft(): void {
   } catch {
     // ignore
   }
+}
+
+/** A finished profile (e.g. this device's, from before signing in) as a draft to confirm. */
+export function draftFromProfile(p: Partial<Profile> | null | undefined): OnboardingDraft | null {
+  if (!p?.onboarded || !p.schoolId || !['hsn', 'cms', 'other'].includes(p.schoolId)) return null;
+  return { step: 1, schoolId: p.schoolId, grade: typeof p.grade === 'number' ? p.grade : undefined, displayName: p.displayName ?? '' };
 }
