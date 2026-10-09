@@ -421,6 +421,7 @@ input[type='checkbox'],
 input[type='radio'] {
   width: auto;
   min-height: 0;
+  padding: 0;
   accent-color: var(--accent);
 }
 input[type='color'] {

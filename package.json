@@ -11,7 +11,9 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "extract-maps": "node tools/extract-school-map.mjs"
+    "extract-maps": "node tools/extract-school-map.mjs",
+    "validate:schedules": "node tools/validate-schedules.mjs && node tools/validate-schedules.mjs --self-test",
+    "icons": "node tools/make-icons.mjs"
   },
   "dependencies": {
     "firebase": "^12.4.0",

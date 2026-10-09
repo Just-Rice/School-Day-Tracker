@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { useData } from '../data/DataProvider';
 import { SCHOOLS } from '../schools';
 import { Spinner } from './ui';
+import ImportLocalDataBanner from './account/ImportLocalDataBanner';
 
 const NAV = [
   { to: '/', label: 'Today', icon: '◷', end: true },
@@ -79,6 +80,7 @@ export default function Layout() {
             {error}
           </div>
         )}
+        <ImportLocalDataBanner />
         <Outlet />
       </main>
     </div>

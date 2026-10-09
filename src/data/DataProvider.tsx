@@ -24,31 +24,35 @@ export interface DataState {
 const DataContext = createContext<DataState | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  // keyed on the uid so a profile change (e.g. display name) doesn't re-create the listeners
+  const uid = useAuth().user?.uid;
   const store = useMemo<DataStore>(() => {
-    if (!user) return localStore;
+    if (!uid) return localStore;
     try {
-      return createFirestoreStore(user.uid);
+      return createFirestoreStore(uid);
     } catch (e) {
       console.error(e);
       return localStore;
     }
-  }, [user]);
+  }, [uid]);
 
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [classes, setClasses] = useState<ClassInfo[] | null>(null);
-  const [assignments, setAssignments] = useState<Assignment[] | null>(null);
+  // Each snapshot remembers the store it came from, so right after sign-in/out the previous
+  // store's data is never shown as the new one's (it reads as loading until fresh data arrives).
+  type Snap<T> = { from: DataStore; v: T } | null;
+  const [profileSnap, setProfile] = useState<Snap<Profile>>(null);
+  const [classesSnap, setClasses] = useState<Snap<ClassInfo[]>>(null);
+  const [assignmentsSnap, setAssignments] = useState<Snap<Assignment[]>>(null);
   const [error, setError] = useState<string | null>(null);
+  const profile = profileSnap?.from === store ? profileSnap.v : null;
+  const classes = classesSnap?.from === store ? classesSnap.v : null;
+  const assignments = assignmentsSnap?.from === store ? assignmentsSnap.v : null;
 
   useEffect(() => {
-    setProfile(null);
-    setClasses(null);
-    setAssignments(null);
     setError(null);
     const fail = (e: Error) => setError(e.message);
-    const u1 = store.subscribeProfile((p) => setProfile(p ?? ({} as Profile)), fail);
-    const u2 = store.subscribeClasses(setClasses, fail);
-    const u3 = store.subscribeAssignments(setAssignments, fail);
+    const u1 = store.subscribeProfile((p) => setProfile({ from: store, v: p ?? ({} as Profile) }), fail);
+    const u2 = store.subscribeClasses((v) => setClasses({ from: store, v }), fail);
+    const u3 = store.subscribeAssignments((v) => setAssignments({ from: store, v }), fail);
     return () => {
       u1();
       u2();
