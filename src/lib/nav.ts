@@ -42,6 +42,11 @@ export interface NavOptions {
   outdoorMargin?: number;
   /** points to precompute distances from, for a tighter A* heuristic */
   landmarks?: NavPoint[];
+  /**
+   * Straighten the route where a straight line is walkable (any-angle paths), instead of the
+   * grid's 45-degree staircase. Off in nav.js; the length reported is A*'s either way.
+   */
+  smooth?: boolean;
 }
 
 export const inRect = (r: Rect, x: number, z: number, m = 0) => x >= r[0] - m && x <= r[2] + m && z >= r[1] - m && z <= r[3] + m;
@@ -120,6 +125,7 @@ export class NavGrid {
   /** portal node per stair on level 0 and level 1 (-1 when it could not be placed) */
   readonly stairNodes: [number, number][];
   maxIterations = 300000;
+  readonly smooth: boolean;
   readonly outdoorCost: number;
   /** level-0 cells outside the building's footprint (only when outdoorCost != 1) */
   readonly outdoor: Uint8Array | null = null;
@@ -150,6 +156,7 @@ export class NavGrid {
     this.h = dec.heights;
     this.levelH = data.levelH;
     this.stairs = data.stairs;
+    this.smooth = !!opts.smooth;
     this.outdoorCost = data.blocks ? (opts.outdoorCost ?? 1) : 1;
     if (data.blocks && this.outdoorCost !== 1) this.outdoor = this.outsideMask(data.blocks, 0.3);
     if (data.blocks && opts.outdoorMargin !== undefined) {
@@ -413,8 +420,63 @@ export class NavGrid {
       keep.add(startAt).add(pts.length);
       used.push({ id: st.id, from: lv, to: (next / N) | 0, start: startAt, end: pts.length });
     }
-    const { points, index } = simplify(pts, keep);
+    const { points, index } = simplify(pts, keep, this.smooth ? this.pull(pts, used) : null);
     return { points, length, stairs: used.map((u) => ({ ...u, start: index[u.start], end: index[u.end] })) };
+  }
+
+  /** marks the points a straight walk can skip (string pulling); stairwell walks stay as they are */
+  private pull(pts: RawPoint[], stairs: StairUse[]): Uint8Array {
+    const fixed = new Uint8Array(pts.length);
+    for (const u of stairs) fixed.fill(1, u.start, u.end + 1);
+    const drop = new Uint8Array(pts.length);
+    let anchor = 0;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const a = pts[anchor], c = pts[i + 1];
+      if (!fixed[i] && a.level === c.level && this.lineOfSight(a.level, a.x, a.z, c.x, c.z)) drop[i] = 1;
+      else anchor = i;
+    }
+    return drop;
+  }
+
+  /**
+   * Whether the straight line between two points on a floor crosses only walkable cells (every
+   * cell it touches, both sides at exact corners) with no step over 0.75 m on the ground floor.
+   */
+  lineOfSight(level: number, ax: number, az: number, bx: number, bz: number): boolean {
+    const { X0, Z0, CS, NX, NZ, h } = this;
+    const bl = this.blocked, off = level * this.N;
+    let i = Math.floor((ax - X0) / CS), k = Math.floor((az - Z0) / CS);
+    const i1 = Math.floor((bx - X0) / CS), k1 = Math.floor((bz - Z0) / CS);
+    if (i < 0 || k < 0 || i >= NX || k >= NZ || i1 < 0 || k1 < 0 || i1 >= NX || k1 >= NZ) return false;
+    const dx = bx - ax, dz = bz - az;
+    const si = Math.sign(dx), sk = Math.sign(dz);
+    const tdx = si ? CS / Math.abs(dx) : Infinity, tdz = sk ? CS / Math.abs(dz) : Infinity;
+    let tmx = si ? (X0 + (i + (si > 0 ? 1 : 0)) * CS - ax) / dx : Infinity;
+    let tmz = sk ? (Z0 + (k + (sk > 0 ? 1 : 0)) * CS - az) / dz : Infinity;
+    let prev = k * NX + i;
+    if (bl[off + prev]) return false;
+    const ok = (c: number, p: number) => !bl[off + c] && (level !== 0 || Math.abs(h[c] - h[p]) <= 0.75);
+    for (let n = Math.abs(i1 - i) + Math.abs(k1 - k); n > 0 && (i !== i1 || k !== k1); n--) {
+      if (Math.abs(tmx - tmz) < 1e-9) {
+        if (!ok(k * NX + i + si, prev) || !ok((k + sk) * NX + i, prev)) return false;
+        i += si;
+        k += sk;
+        tmx += tdx;
+        tmz += tdz;
+        n--;
+      } else if (tmx < tmz) {
+        i += si;
+        tmx += tdx;
+      } else {
+        k += sk;
+        tmz += tdz;
+      }
+      if (i < 0 || k < 0 || i >= NX || k >= NZ) return false;
+      const c = k * NX + i;
+      if (!ok(c, prev)) return false;
+      prev = c;
+    }
+    return i === i1 && k === k1;
   }
 }
 
@@ -423,17 +485,23 @@ function oct(ax: number, az: number, bx: number, bz: number): number {
   return dx > dz ? dx + 0.414 * dz : dz + 0.414 * dx;
 }
 
-/** drops points in the middle of straight runs; `index` maps old point indices to new ones */
-function simplify(pts: RawPoint[], keep: Set<number>): { points: NavPoint[]; index: Int32Array } {
+/**
+ * Drops points in the middle of straight runs (and any marked in `drop`); `index` maps old point
+ * indices to new ones.
+ */
+function simplify(pts: RawPoint[], keep: Set<number>, drop: Uint8Array | null): { points: NavPoint[]; index: Int32Array } {
   const index = new Int32Array(pts.length).fill(-1);
+  const live: number[] = [];
+  for (let i = 0; i < pts.length; i++) if (!drop?.[i] || i === 0 || i === pts.length - 1) live.push(i);
   const out: RawPoint[] = [];
   const add = (i: number) => {
     index[i] = out.length;
     out.push(pts[i]);
   };
-  if (pts.length) add(0);
-  for (let i = 1; i < pts.length - 1; i++) {
-    const a = out[out.length - 1], b = pts[i], c = pts[i + 1];
+  if (live.length) add(live[0]);
+  for (let j = 1; j < live.length - 1; j++) {
+    const i = live[j];
+    const a = out[out.length - 1], b = pts[i], c = pts[live[j + 1]];
     if (keep.has(i) || a.level !== b.level || b.level !== c.level) {
       add(i);
       continue;
@@ -441,7 +509,7 @@ function simplify(pts: RawPoint[], keep: Set<number>): { points: NavPoint[]; ind
     const cross = (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x);
     if (Math.abs(cross) > 1e-6 || Math.abs(b.h - a.h) > 0.05) add(i);
   }
-  if (pts.length > 1) add(pts.length - 1);
+  if (live.length > 1) add(live[live.length - 1]);
   return { points: out.map(({ level, x, z }) => ({ level, x, z })), index };
 }
 
@@ -509,9 +577,9 @@ class MinHeap {
 
 type RoomLike = Pick<MapRoomRaw, 'level' | 'R' | 'target'>;
 
-/** the grid the app routes on: indoor routes preferred, the front entrance as a landmark */
+/** the grid the app routes on: indoor routes preferred, the front entrance as a landmark, straightened paths */
 export function createNavGrid(data: NavSource & Pick<SchoolMapData, 'spawn'>): NavGrid {
-  return new NavGrid(data, { outdoorCost: 2, outdoorMargin: 10, landmarks: [spawnPoint(data)] });
+  return new NavGrid(data, { outdoorCost: 2, outdoorMargin: 10, landmarks: [spawnPoint(data)], smooth: true });
 }
 
 /** where routes to a room end: the walkable point just inside its door (or its middle) */
@@ -549,4 +617,20 @@ export function routeFromEntrance(grid: NavGrid, data: Pick<SchoolMapData, 'spaw
 
 export function routeBetween(grid: NavGrid, a: RoomLike, b: RoomLike): NavRoute | null {
   return grid.find(roomTarget(a), roomTarget(b), b.R);
+}
+
+/** where a route starts: a point (a room's door) or one of data.entrances */
+export type RouteStart = { point: NavPoint } | { entrance: number };
+
+export interface RouteQuery {
+  from: RouteStart;
+  to: NavPoint;
+  /** the destination room's rect; the goal snaps to a cell inside it */
+  toRect?: Rect;
+}
+
+/** answers a RouteQuery; shared by the routing worker and the main-thread fallback */
+export function solveRoute(grid: NavGrid, data: Pick<SchoolMapData, 'entrances' | 'blocks' | 'courtyards' | 'spawn'>, q: RouteQuery): NavRoute | null {
+  const start = 'entrance' in q.from ? entrancePoint(grid, data, q.from.entrance) : q.from.point;
+  return start ? grid.find(start, q.to, q.toRect) : null;
 }
