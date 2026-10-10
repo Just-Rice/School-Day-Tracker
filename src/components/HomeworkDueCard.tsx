@@ -1,11 +1,13 @@
-// CONTRACT: <HomeworkDueCard days={2} /> lists unfinished assignments due within `days` days
-// (plus overdue ones), for the Today page. Implemented by the homework feature.
+// CONTRACT: <HomeworkDueCard days={2} /> lists unfinished assignments due within `days` days, or
+// through the next school day when that's later (plus overdue ones), for the Today page.
+// Implemented by the homework feature.
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import type { ISODate } from '../types';
 import { useData } from '../data/DataProvider';
-import { useNow } from '../hooks/useSchedule';
-import { daysBetween, minutesNow, todayISO } from '../lib/dates';
-import { normalizeAssignment, sortAssignments } from '../lib/homework';
+import { useNow, useSchedule } from '../hooks/useSchedule';
+import { daysBetween, formatDate, minutesNow, parseISODate, todayISO } from '../lib/dates';
+import { dueSoonUntil, normalizeAssignment, sortAssignments } from '../lib/homework';
 import AssignmentRow from './homework/AssignmentRow';
 import { useToggleDone } from './homework/bits';
 import { Card } from './ui';
@@ -13,7 +15,12 @@ import '../pages/homework.css';
 
 const MAX_ROWS = 6;
 
-function emptyText(days: number): string {
+function emptyText(days: number, today: ISODate, until: ISODate): string {
+  const n = daysBetween(today, until);
+  if (n > Math.max(0, days)) {
+    // reached out to the next school day: "through Monday", "through Jan 4"
+    return `Nothing due through ${n < 7 ? parseISODate(until).toLocaleDateString(undefined, { weekday: 'long' }) : formatDate(until, { weekday: false })}`;
+  }
   if (days <= 0) return 'Nothing due today';
   if (days === 1) return 'Nothing due today or tomorrow';
   return `Nothing due in the next ${days} days`;
@@ -21,8 +28,12 @@ function emptyText(days: number): string {
 
 export default function HomeworkDueCard({ days = 2, classId }: { days?: number; classId?: string }) {
   const { assignments, classes, profile } = useData();
+  const { getDay } = useSchedule();
   const now = useNow(60000);
   const today = todayISO(now);
+  // on a Friday that's Monday, not just the weekend
+  const until = useMemo(() => dueSoonUntil(today, days, getDay), [today, days, getDay]);
+  const reach = daysBetween(today, until);
   const nowMinutes = minutesNow(now);
   const { pinned, toggle } = useToggleDone();
   const classById = useMemo(() => new Map(classes.map((c) => [c.id, c])), [classes]);
@@ -33,9 +44,9 @@ export default function HomeworkDueCard({ days = 2, classId }: { days?: number; 
       sortAssignments(
         assignments
           .map(normalizeAssignment)
-          .filter((a) => (!classId || a.classId === classId) && (a.status !== 'done' || pinned.has(a.id)) && daysBetween(today, a.dueDate) <= days),
+          .filter((a) => (!classId || a.classId === classId) && (a.status !== 'done' || pinned.has(a.id)) && daysBetween(today, a.dueDate) <= reach),
       ),
-    [assignments, classId, pinned, today, days],
+    [assignments, classId, pinned, today, reach],
   );
   const left = due.filter((a) => a.status !== 'done').length;
   const shown = due.slice(0, MAX_ROWS);
@@ -64,7 +75,7 @@ export default function HomeworkDueCard({ days = 2, classId }: { days?: number; 
     >
       {due.length === 0 ? (
         <p className="muted hw-due-empty">
-          {emptyText(days)} <span aria-hidden>🎉</span>
+          {emptyText(days, today, until)} <span aria-hidden>🎉</span>
         </p>
       ) : (
         <>

@@ -271,6 +271,20 @@ export function defaultDueDate(classId: string | null | undefined, today: ISODat
   return (classId && nextMeetingDate(classId, today, getDay, classes)) || addDays(today, 1);
 }
 
+/**
+ * The last day a "due soon" list covers: `days` days from today, or the next school day when
+ * that's later, so on a Friday it shows Monday's work and before a break the first day back.
+ * Looks at most `maxDays` days ahead for that school day.
+ */
+export function dueSoonUntil(today: ISODate, days: number, getDay: (d: ISODate) => DayInfo, maxDays = 14): ISODate {
+  const end = addDays(today, Math.max(0, days));
+  for (let k = 1; k <= maxDays; k++) {
+    const date = addDays(today, k);
+    if (getDay(date).isSchoolDay) return date > end ? date : end;
+  }
+  return end;
+}
+
 export function subtaskProgress(a: Pick<Assignment, 'subtasks'>): { done: number; total: number } {
   const list = a.subtasks ?? [];
   return { done: list.filter((s) => s.done).length, total: list.length };
@@ -334,6 +348,28 @@ export function makeLink(label: string, url: string): LinkItem {
 
 export function makeSubtask(text: string): Subtask {
   return { id: newId(), text: text.trim(), done: false };
+}
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const sameValue = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * An edit form's changes replayed onto the latest stored copy of the record. Fields the user
+ * changed (`draft` differs from `initial`, the copy the form started from) come from the draft;
+ * every other field comes from `live`, so saving doesn't undo what another device or tab
+ * changed in the meantime (an assignment checked off, a class archived). Objects such as a
+ * class's teacher are merged field by field; arrays and other values are taken whole.
+ */
+export function rebaseEdits<T extends object>(initial: T, draft: T, live: T): T {
+  const a = initial as Record<string, unknown>;
+  const d = draft as Record<string, unknown>;
+  const l = live as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...l };
+  for (const k of new Set([...Object.keys(a), ...Object.keys(d)])) {
+    if (sameValue(d[k], a[k])) continue;
+    out[k] = isPlainObject(d[k]) && isPlainObject(a[k]) && isPlainObject(l[k]) ? rebaseEdits(a[k], d[k], l[k]) : d[k];
+  }
+  return out as T;
 }
 
 /** a copy with item `i` moved by `delta` places (unchanged when the move is out of range) */

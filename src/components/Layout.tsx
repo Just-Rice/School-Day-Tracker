@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type MouseEvent } from 'react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { useData } from '../data/DataProvider';
@@ -14,6 +14,15 @@ const NAV = [
   { to: '/map', label: 'Map', icon: '⌖' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ];
+
+/**
+ * The skip link focuses <main> itself: with hash routes, following href="#main" would be a
+ * navigation to the route /main (an unknown route, so Today).
+ */
+function skipToMain(e: MouseEvent) {
+  e.preventDefault();
+  document.getElementById('main')?.focus();
+}
 
 /** Applies the theme and school accent to <html> */
 export function useAppearance() {
@@ -40,12 +49,13 @@ export default function Layout() {
       </div>
     );
   }
-  if (!profile.onboarded) return <Navigate to="/welcome" replace state={{ from: loc.pathname }} />;
+  // the whole link, query included (a shared #/map?to=214), for onboarding to come back to
+  if (!profile.onboarded) return <Navigate to="/welcome" replace state={{ from: loc.pathname + loc.search }} />;
 
   const school = SCHOOLS[profile.schoolId];
   return (
     <div className="app">
-      <a className="skip" href="#main">
+      <a className="skip" href="#main" onClick={skipToMain}>
         Skip to content
       </a>
       <nav className="sidebar" aria-label="Main">
@@ -74,7 +84,7 @@ export default function Layout() {
           {user ? <>Synced · {user.email ?? user.displayName}</> : firebaseEnabled ? <NavLink to="/login">Sign in to sync</NavLink> : 'Saved on this device'}
         </div>
       </nav>
-      <main id="main" className="main">
+      <main id="main" className="main" tabIndex={-1}>
         {error && (
           <div className="banner banner-error" role="alert">
             {error}

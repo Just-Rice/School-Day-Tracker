@@ -16,9 +16,11 @@ import {
   prepareClass,
   suggestIcon,
   validateClass,
+  withClassDefaults,
   type PeriodConflict,
 } from '../../lib/classes';
-import { Button, Card, Field, Modal, Spinner } from '../ui';
+import { rebaseEdits } from '../../lib/homework';
+import { Button, Card, Field, Modal, Spinner, useUnsavedChanges } from '../ui';
 import ChoiceChips, { type Choice } from './ChoiceChips';
 import ColorPicker from './ColorPicker';
 import IconPicker from './IconPicker';
@@ -73,6 +75,7 @@ export default function ClassForm({
   onSaved,
   onCancel,
   onDelete,
+  leaving,
 }: {
   initial: ClassInfo;
   isNew: boolean;
@@ -80,6 +83,8 @@ export default function ClassForm({
   onCancel: () => void;
   /** shows a Delete button (existing classes) */
   onDelete?: () => void;
+  /** the page is leaving on its own (the class is being deleted): unsaved edits don't matter */
+  leaving?: boolean;
 }) {
   const { profile, classes, saveClass } = useData();
   const { schedule, loading: scheduleLoading } = useSchedule();
@@ -109,12 +114,8 @@ export default function ClassForm({
   const dirty = JSON.stringify(c) !== JSON.stringify(initial);
   const neverMeets = !!schedule && c.periods.length > 0 && meetingTimes(schedule, c).length === 0;
 
-  useEffect(() => {
-    if (!dirty || saving) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty, saving]);
+  // a tab, Back or swipe-back while there are edits asks first, like Cancel does
+  const unsaved = useUnsavedChanges(dirty && !saving && !leaving);
 
   // after a failed submit, move focus to the first field with a problem
   useEffect(() => {
@@ -147,9 +148,13 @@ export default function ClassForm({
     }
     setSaving(true);
     setSaveError(null);
-    const out = prepareClass(c, cycleIds);
+    // Only what was changed here goes over the stored class, which may have changed since the form
+    // opened (archived on another device, say); writing the whole snapshot would undo that.
+    const live = classes.find((x) => x.id === c.id);
+    const out = prepareClass(live ? rebaseEdits(initial, c, withClassDefaults(live)) : c, cycleIds);
     try {
       await settleSoon(saveClass(out));
+      unsaved.allowLeave();
       onSaved(out.id);
     } catch (err) {
       setSaveError(errorText(err));
@@ -158,6 +163,10 @@ export default function ClassForm({
   };
 
   const cancel = () => (dirty ? setConfirmDiscard(true) : onCancel());
+  const keepEditing = () => {
+    setConfirmDiscard(false);
+    unsaved.stay();
+  };
 
   const dayChoices: Choice[] = cycleDays.map((d) => ({ value: d.id, label: cycleDayName(d.id, schedule) }));
   const errorCount = Object.keys(shown).length;
@@ -391,17 +400,21 @@ export default function ClassForm({
       </div>
 
       <Modal
-        open={confirmDiscard}
-        onClose={() => setConfirmDiscard(false)}
+        open={confirmDiscard || unsaved.blocked}
+        onClose={keepEditing}
         title="Discard changes?"
         footer={
           <>
-            <Button onClick={() => setConfirmDiscard(false)}>Keep editing</Button>
+            <Button onClick={keepEditing}>Keep editing</Button>
             <Button
               variant="danger"
               onClick={() => {
                 setConfirmDiscard(false);
-                onCancel();
+                if (unsaved.blocked) unsaved.proceed();
+                else {
+                  unsaved.allowLeave();
+                  onCancel();
+                }
               }}
             >
               Discard

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { ClassInfo } from '../types';
-import { Card, EmptyState, Page, Spinner } from '../components/ui';
+import { Card, EmptyState, Page, Spinner, canGoBack } from '../components/ui';
 import ClassForm from '../components/classes/ClassForm';
 import DeleteClassDialog from '../components/classes/DeleteClassDialog';
 import { useData } from '../data/DataProvider';
@@ -61,10 +61,10 @@ export default function ClassEditPage() {
         </Card>
       </Page>
     );
-  return <Editor key={id ?? 'new'} existing={existing} onLeaving={() => setLeaving(true)} />;
+  return <Editor key={id ?? 'new'} existing={existing} leaving={leaving} onLeaving={() => setLeaving(true)} />;
 }
 
-function Editor({ existing, onLeaving }: { existing?: ClassInfo; onLeaving: () => void }) {
+function Editor({ existing, leaving, onLeaving }: { existing?: ClassInfo; leaving: boolean; onLeaving: () => void }) {
   const { classes } = useData();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -78,14 +78,22 @@ function Editor({ existing, onLeaving }: { existing?: ClassInfo; onLeaving: () =
     if (backToDetail) navigate(-1);
     else if (savedId) navigate(`/classes/${savedId}`, { replace: true });
     else if (isNew) {
-      if (location.key !== 'default') navigate(-1);
+      // Back only when it stays in the app (not after onboarding's redirect, or from a shared link)
+      if (canGoBack()) navigate(-1);
       else navigate('/classes', { replace: true });
     } else navigate(`/classes/${existing.id}`, { replace: true });
   };
 
   return (
     <Page title={isNew ? 'Add a class' : `Edit ${existing.name || 'class'}`} subtitle={isNew ? 'Only the name is required. Add the rest now or any time later.' : undefined}>
-      <ClassForm initial={initial} isNew={isNew} onSaved={(savedId) => leave(savedId)} onCancel={() => leave()} onDelete={existing ? () => setDeleting(true) : undefined} />
+      <ClassForm
+        initial={initial}
+        isNew={isNew}
+        onSaved={(savedId) => leave(savedId)}
+        onCancel={() => leave()}
+        onDelete={existing ? () => setDeleting(true) : undefined}
+        leaving={leaving}
+      />
       {existing && (
         <DeleteClassDialog
           cls={existing}

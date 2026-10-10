@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import type { Assignment, AssignmentStatus, ISODate, Priority } from '../types';
-import { Button, Card, Chip, EmptyState, Field, Modal, Page } from '../components/ui';
+import type { Assignment, AssignmentStatus, ISODate, LinkItem, Priority } from '../types';
+import { Button, Card, Chip, EmptyState, Field, Modal, Page, canGoBack, useUnsavedChanges } from '../components/ui';
 import LinksEditor from '../components/homework/LinksEditor';
 import SubtasksEditor from '../components/homework/SubtasksEditor';
 import { FieldGroup, Segmented } from '../components/homework/bits';
@@ -17,8 +17,10 @@ import {
   emptyAssignment,
   isAssignmentType,
   makeLink,
+  makeSubtask,
   nextMeetingDate,
   normalizeAssignment,
+  rebaseEdits,
   relativeDue,
   withCompletion,
 } from '../lib/homework';
@@ -36,7 +38,6 @@ function AssignmentEditor({ id }: { id?: string }) {
   const { getDay } = useSchedule();
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const location = useLocation();
   const now = useNow(60000);
   const today = todayISO(now);
   const isNew = !id;
@@ -57,11 +58,18 @@ function AssignmentEditor({ id }: { id?: string }) {
   const [draft, setDraft] = useState<Assignment | undefined>(initial);
   // new assignments follow the class's next meeting until a date is picked
   const dueParam = params.get('due');
-  const [pickedDue, setPickedDue] = useState<ISODate | null>(() => (isNew ? (isISODate(dueParam) ? dueParam : null) : (initial?.dueDate ?? null)));
+  const [initialDue] = useState<ISODate | null>(() => (isNew ? (isISODate(dueParam) ? dueParam : null) : (initial?.dueDate ?? null)));
+  const [pickedDue, setPickedDue] = useState(initialDue);
+  // what's typed in the "new link" and "new step" boxes, saved even if Add wasn't pressed
+  const [newLink, setNewLink] = useState<LinkItem>({ label: '', url: '' });
+  const [newStep, setNewStep] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [titleError, setTitleError] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
+  const dirty =
+    !!draft && (JSON.stringify(draft) !== JSON.stringify(initial) || pickedDue !== initialDue || !!(newLink.url.trim() || newLink.label.trim() || newStep.trim()));
+  const unsaved = useUnsavedChanges(dirty && !saving);
 
   const classId = draft?.classId ?? null;
   const autoDue = useMemo(() => defaultDueDate(classId, today, getDay, classes), [classId, today, getDay, classes]);
@@ -75,8 +83,8 @@ function AssignmentEditor({ id }: { id?: string }) {
   }, [classId, due, getDay, classes]);
 
   const goBack = () => {
-    // 'default' is the first page this tab opened: there's nothing of ours to go back to
-    if (location.key !== 'default') navigate(-1);
+    // Back only when it stays in the app (not after onboarding's redirect, or from a shared link)
+    if (canGoBack()) navigate(-1);
     else navigate('/homework', { replace: true });
   };
 
@@ -106,27 +114,36 @@ function AssignmentEditor({ id }: { id?: string }) {
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (!draft || saving) return;
-    const title = draft.title.trim();
-    if (!title) {
+    if (!draft || !initial || saving) return;
+    if (!draft.title.trim()) {
       setTitleError(true);
       titleRef.current?.focus();
       return;
     }
-    const minutes = draft.estimatedMinutes;
-    const out = withCompletion({
+    const edited: Assignment = {
       ...draft,
-      title,
       dueDate: due,
-      dueTime: draft.dueTime || undefined,
-      notes: draft.notes?.trim() ? draft.notes : undefined,
+      links: newLink.url.trim() ? [...draft.links, makeLink(newLink.label, newLink.url)] : draft.links,
+      subtasks: newStep.trim() ? [...draft.subtasks, makeSubtask(newStep)] : draft.subtasks,
+    };
+    // Only what was changed here goes over the stored copy, which may have changed since the form
+    // opened (checked off on a phone, say); writing the whole snapshot would undo that.
+    const live = assignments.find((a) => a.id === initial.id);
+    const next = live ? rebaseEdits(initial, edited, normalizeAssignment(live)) : edited;
+    const minutes = next.estimatedMinutes;
+    const out = withCompletion({
+      ...next,
+      title: next.title.trim(),
+      dueTime: next.dueTime || undefined,
+      notes: next.notes?.trim() ? next.notes : undefined,
       estimatedMinutes: minutes && minutes > 0 ? Math.round(minutes) : undefined,
-      links: draft.links.filter((l) => l.url.trim()).map((l) => makeLink(l.label, l.url)),
-      subtasks: draft.subtasks.map((s) => ({ ...s, text: s.text.trim() })).filter((s) => s.text),
+      links: next.links.filter((l) => l.url.trim()).map((l) => makeLink(l.label, l.url)),
+      subtasks: next.subtasks.map((s) => ({ ...s, text: s.text.trim() })).filter((s) => s.text),
     });
     setSaving(true);
     try {
       await saveAssignment(out);
+      unsaved.allowLeave();
       goBack();
     } catch {
       setSaving(false);
@@ -138,6 +155,7 @@ function AssignmentEditor({ id }: { id?: string }) {
     setSaving(true);
     try {
       await deleteAssignment(initial!.id);
+      unsaved.allowLeave();
       goBack();
     } catch {
       setSaving(false);
@@ -287,7 +305,7 @@ function AssignmentEditor({ id }: { id?: string }) {
         </Card>
 
         <Card title="Steps">
-          <SubtasksEditor value={draft.subtasks} onChange={(subtasks) => set({ subtasks })} />
+          <SubtasksEditor value={draft.subtasks} onChange={(subtasks) => set({ subtasks })} pending={newStep} onPendingChange={setNewStep} />
         </Card>
 
         <Card title="Notes and links">
@@ -296,7 +314,7 @@ function AssignmentEditor({ id }: { id?: string }) {
               <textarea value={draft.notes ?? ''} onChange={(e) => set({ notes: e.target.value })} placeholder="Instructions, pages, who to ask…" rows={4} />
             </Field>
             <FieldGroup label="Links">
-              <LinksEditor value={draft.links} onChange={(links) => set({ links })} />
+              <LinksEditor value={draft.links} onChange={(links) => set({ links })} pending={newLink} onPendingChange={setNewLink} />
             </FieldGroup>
           </div>
         </Card>
@@ -331,6 +349,22 @@ function AssignmentEditor({ id }: { id?: string }) {
         }
       >
         <p>“{initial.title || 'Untitled'}” will be deleted. This can't be undone.</p>
+      </Modal>
+
+      <Modal
+        open={unsaved.blocked}
+        onClose={unsaved.stay}
+        title="Discard changes?"
+        footer={
+          <>
+            <Button onClick={unsaved.stay}>Keep editing</Button>
+            <Button variant="danger" onClick={unsaved.proceed}>
+              Discard
+            </Button>
+          </>
+        }
+      >
+        <p className="muted">{isNew ? "This assignment hasn't been added yet." : "Your changes to this assignment haven't been saved."}</p>
       </Modal>
     </Page>
   );

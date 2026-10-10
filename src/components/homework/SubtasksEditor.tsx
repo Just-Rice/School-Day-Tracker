@@ -1,11 +1,23 @@
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useRef, type KeyboardEvent } from 'react';
 import type { Subtask } from '../../types';
 import { makeSubtask, moveItem } from '../../lib/homework';
 import { Button } from '../ui';
 
-/** Checklist editor: toggle, rename, reorder (up/down) and remove steps, or add one with Enter. */
-export default function SubtasksEditor({ value, onChange }: { value: Subtask[]; onChange: (v: Subtask[]) => void }) {
-  const [text, setText] = useState('');
+/**
+ * Checklist editor: toggle, rename, reorder (up/down) and remove steps, or add one with Enter.
+ * The new step's text (`pending`) belongs to the page, so it can save a step typed but not added.
+ */
+export default function SubtasksEditor({
+  value,
+  onChange,
+  pending: text,
+  onPendingChange: setText,
+}: {
+  value: Subtask[];
+  onChange: (v: Subtask[]) => void;
+  pending: string;
+  onPendingChange: (text: string) => void;
+}) {
   const addRef = useRef<HTMLInputElement>(null);
   const done = value.filter((s) => s.done).length;
 

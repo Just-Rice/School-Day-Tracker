@@ -1,5 +1,6 @@
 // Small shared UI primitives. Styling lives in styles.css; see the class names there.
-import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useBlocker, type BlockerFunction } from 'react-router-dom';
 
 export function Page({ title, subtitle, actions, children, wide }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode; wide?: boolean }) {
   return (
@@ -110,6 +111,57 @@ export function Modal({ open, onClose, title, children, footer }: { open: boolea
       </div>
     </dialog>
   );
+}
+
+/**
+ * For edit forms: while `dirty`, an in-app navigation away (a tab, a link, Back, swipe-back) is
+ * held until the page answers it, so the page can ask "Discard changes?" while `blocked`, then
+ * call proceed() or stay(). Closing or reloading the tab gets the browser's own prompt. Call
+ * allowLeave() right before leaving on purpose (after saving or deleting).
+ */
+export function useUnsavedChanges(dirty: boolean) {
+  // read when a navigation happens, which can be before an effect would have caught up
+  const guard = useRef({ dirty, allowed: false });
+  guard.current.dirty = dirty;
+  const blocker = useBlocker(
+    useCallback<BlockerFunction>(
+      ({ currentLocation: from, nextLocation: to }) => guard.current.dirty && !guard.current.allowed && (from.pathname !== to.pathname || from.search !== to.search),
+      [],
+    ),
+  );
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      if (!guard.current.allowed) e.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+  return {
+    blocked: blocker.state === 'blocked',
+    /** discard the changes and go where the user was going */
+    proceed() {
+      guard.current.allowed = true;
+      if (blocker.state === 'blocked') blocker.proceed();
+    },
+    /** keep editing */
+    stay() {
+      if (blocker.state === 'blocked') blocker.reset();
+    },
+    allowLeave() {
+      guard.current.allowed = true;
+    },
+  };
+}
+
+/**
+ * Whether going back stays in the app. The router numbers this tab's history entries from 0, the
+ * first page it opened in the app, so at 0 Back would leave the app (or do nothing in an
+ * installed app); a replace keeps the number, so it still counts after onboarding's redirects.
+ */
+export function canGoBack(): boolean {
+  const idx = (window.history.state as { idx?: unknown } | null)?.idx;
+  return typeof idx === 'number' && idx > 0;
 }
 
 /** Class color dot */

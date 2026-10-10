@@ -5,11 +5,12 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 const THEME = '#1f45a8';
 const BACKGROUND = '#f5f6f8';
-
 // BASE_PATH is set by the GitHub Pages workflow (e.g. /School-Day-Tracker/); '/' everywhere else.
 // The manifest, service worker and icon paths below are all relative, so they follow it.
+const BASE = process.env.BASE_PATH || '/';
+
 export default defineConfig({
-  base: process.env.BASE_PATH || '/',
+  base: BASE,
   plugins: [
     react(),
     VitePWA({
@@ -20,7 +21,10 @@ export default defineConfig({
       includeManifestIcons: false,
       devOptions: { enabled: false },
       manifest: {
-        id: '.',
+        // The app's identity for installs. Unlike the other URLs here it's resolved against the
+        // origin, not the manifest, so '.' would claim all of just-rice.github.io; this is the
+        // app's own path (the same as start_url). Changing it later orphans existing installs.
+        id: BASE,
         name: 'School Day Tracker',
         short_name: 'School Day',
         description: 'Your class schedule, homework and school maps with walking directions, for WW-P High School North and Community Middle School students.',
@@ -39,25 +43,29 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // The app shell only. School data (schools/*/*.json, the maps are ~400 KB each) is cached
-        // at runtime below, so a student only downloads the map of their own school.
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // The app shell and the bell schedules (a few KB each). The first visit reads its school's
+        // schedule before the service worker is running, so that fetch never reaches the runtime
+        // cache below; precached, Today works offline from the next launch on. The maps (~400 KB
+        // each) are cached at runtime below, so a student only downloads their own school's.
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}', 'schools/*/schedule.json'],
         // the Firebase SDK chunk is ~500 KB; leave room so it's never silently left out
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         navigateFallback: 'index.html',
         // Firebase Hosting serves its auth helper pages under /__/; never answer those with the app
         navigateFallbackDenylist: [/^\/__\//],
         cleanupOutdatedCaches: true,
-        // Take control on the first install so the school data fetched during this visit is
-        // cached too. Updates still wait for the student to press Reload (registerType 'prompt').
+        // Take control as soon as it's installed, so school data first fetched after that (a map
+        // opened later in this visit) is cached too. Updates still wait for the student to press
+        // Reload (registerType 'prompt').
         clientsClaim: true,
         // Only same-origin requests are listed here. Firebase (Auth, Firestore on *.googleapis.com
         // and *.firebaseapp.com) is cross-origin and never matches, so it always goes to the
         // network and Firestore's own offline cache handles being offline.
         runtimeCaching: [
           {
-            // RegExp routes only match cross-origin URLs from their first character, so this one
-            // is same-origin only. It's a suffix match so it works under any base path.
+            // The maps (a precached schedule.json is answered by the precache first). RegExp routes
+            // only match cross-origin URLs from their first character, so this one is same-origin
+            // only. It's a suffix match so it works under any base path.
             urlPattern: /\/schools\/[\w-]+\/[\w-]+\.json$/,
             handler: 'StaleWhileRevalidate',
             options: {

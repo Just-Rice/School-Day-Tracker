@@ -224,6 +224,10 @@ a {
   min-width: 0;
   padding: 24px 28px 48px;
 }
+/* focused by the skip link; an outline around the whole page isn't useful */
+.main:focus {
+  outline: none;
+}
 .center-screen {
   min-height: 100vh;
   display: grid;

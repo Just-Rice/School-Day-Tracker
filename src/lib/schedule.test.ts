@@ -373,6 +373,10 @@ describe('resolveDay: rotation', () => {
     expect(resolveDay(s, '2026-09-16', snow).notes).toEqual([]);
     // ...unless the next school day has its own cycle day
     expect(resolveDay(s, '2026-09-16', { ...snow, '2026-09-16': { cycleDay: 'D2' } }).cycleDay?.id).toBe('D2');
+    // HSN resyncs to D on Tue Mar 30, 2027: a snow day then makes Wed Mar 31 the D Day
+    const hsn = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../public/schools/hsn/schedule.json'), 'utf8')) as SchoolSchedule;
+    const hsnSnow = { '2027-03-30': { noSchool: true } };
+    expect(['2027-03-31', '2027-04-01'].map((d) => resolveDay(hsn, d, hsnSnow).cycleDay?.id)).toEqual(['D', 'A']);
   });
 
   it('counts make-up days just before or after the school year', () => {

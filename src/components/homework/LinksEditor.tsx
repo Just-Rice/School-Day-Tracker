@@ -1,19 +1,30 @@
-import { useState, type KeyboardEvent } from 'react';
+import type { KeyboardEvent } from 'react';
 import type { LinkItem } from '../../types';
 import { isSafeUrl, makeLink, moveItem } from '../../lib/homework';
 import { Button } from '../ui';
 
-/** Links (Google Classroom, a doc, the rubric): edit in place, reorder, remove, or add new ones. */
-export default function LinksEditor({ value, onChange }: { value: LinkItem[]; onChange: (v: LinkItem[]) => void }) {
-  const [label, setLabel] = useState('');
-  const [url, setUrl] = useState('');
+/**
+ * Links (Google Classroom, a doc, the rubric): edit in place, reorder, remove, or add new ones.
+ * The new link's fields (`pending`) belong to the page, so it can save a link pasted but not added.
+ */
+export default function LinksEditor({
+  value,
+  onChange,
+  pending,
+  onPendingChange,
+}: {
+  value: LinkItem[];
+  onChange: (v: LinkItem[]) => void;
+  pending: LinkItem;
+  onPendingChange: (p: LinkItem) => void;
+}) {
+  const { label, url } = pending;
 
   const update = (i: number, p: Partial<LinkItem>) => onChange(value.map((l, j) => (j === i ? { ...l, ...p } : l)));
   const add = () => {
     if (!url.trim()) return;
     onChange([...value, makeLink(label, url)]);
-    setLabel('');
-    setUrl('');
+    onPendingChange({ label: '', url: '' });
   };
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -53,11 +64,11 @@ export default function LinksEditor({ value, onChange }: { value: LinkItem[]; on
         <label className="sr-only" htmlFor="hw-link-label">
           New link name
         </label>
-        <input id="hw-link-label" value={label} onChange={(e) => setLabel(e.target.value)} onKeyDown={onKey} placeholder="Name (optional)" maxLength={100} />
+        <input id="hw-link-label" value={label} onChange={(e) => onPendingChange({ ...pending, label: e.target.value })} onKeyDown={onKey} placeholder="Name (optional)" maxLength={100} />
         <label className="sr-only" htmlFor="hw-link-url">
           New link address
         </label>
-        <input id="hw-link-url" value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={onKey} placeholder="Paste a link" inputMode="url" autoComplete="url" />
+        <input id="hw-link-url" value={url} onChange={(e) => onPendingChange({ ...pending, url: e.target.value })} onKeyDown={onKey} placeholder="Paste a link" inputMode="url" autoComplete="url" />
         <Button onClick={add} disabled={!url.trim()}>
           Add
         </Button>

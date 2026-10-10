@@ -9,6 +9,7 @@ import {
   defaultDueDate,
   doneOlderThan,
   dueGroup,
+  dueSoonUntil,
   emptyAssignment,
   filterAssignments,
   groupAssignments,
@@ -22,6 +23,7 @@ import {
   normalizeAssignment,
   normalizeUrl,
   isSafeUrl,
+  rebaseEdits,
   relativeDue,
   setDone,
   shortDate,
@@ -309,6 +311,26 @@ describe('nextMeetingDate', () => {
   });
 });
 
+describe('dueSoonUntil', () => {
+  // weekdays are school days, except a Monday holiday on Oct 12
+  const getDay = (date: ISODate): DayInfo => ({ date, isSchoolDay: !isWeekend(date) && date !== '2026-10-12', slots: [], notes: [] });
+
+  it('covers the next `days` days when the next school day is within them', () => {
+    expect(dueSoonUntil('2026-10-07', 2, getDay)).toBe('2026-10-09'); // Wed -> Fri
+    expect(dueSoonUntil('2026-10-08', 2, getDay)).toBe('2026-10-10'); // Thu -> Sat
+    expect(dueSoonUntil('2026-10-08', 0, getDay)).toBe('2026-10-09'); // just today, but Friday is the next school day
+  });
+  it('reaches the next school day across a weekend or a day off', () => {
+    expect(dueSoonUntil('2026-10-09', 2, getDay)).toBe('2026-10-13'); // Fri -> Tue (Mon is off)
+    expect(dueSoonUntil('2026-10-02', 2, getDay)).toBe('2026-10-05'); // Fri -> Mon
+  });
+  it('falls back to `days` days without a schedule or a school day in reach', () => {
+    const none = (date: ISODate): DayInfo => ({ date, isSchoolDay: false, reason: 'Loading schedule…', slots: [], notes: [] });
+    expect(dueSoonUntil('2026-10-09', 2, none)).toBe('2026-10-11');
+    expect(dueSoonUntil('2026-10-09', 2, getDay, 2)).toBe('2026-10-11');
+  });
+});
+
 describe('nextMeetingDate with the real 2026-27 calendars', () => {
   const files = import.meta.glob<SchoolSchedule>('../../public/schools/*/schedule.json', { eager: true, import: 'default' });
   const dayFn = (id: 'hsn' | 'cms', overrides: Record<ISODate, DayOverride> = {}) => {
@@ -332,6 +354,12 @@ describe('nextMeetingDate with the real 2026-27 calendars', () => {
     const getDay = dayFn('hsn');
     expect(nextMeetingDate('eng', '2026-11-04', getDay, hsn)).toBe('2026-11-09');
     expect(nextMeetingDate('chem', '2026-11-04', getDay, hsn)).toBe('2026-11-10'); // Mon Nov 9 is an A day
+  });
+
+  it('dueSoonUntil reaches the first day back after NJEA and a weekend', () => {
+    const getDay = dayFn('hsn');
+    expect(dueSoonUntil('2026-10-09', 2, getDay)).toBe('2026-10-12');
+    expect(dueSoonUntil('2026-11-04', 2, getDay)).toBe('2026-11-09');
   });
 
   it("honors the user's own day overrides (snow day)", () => {
@@ -431,5 +459,39 @@ describe('links and list helpers', () => {
     expect(moveItem(['a', 'b', 'c'], 2, -1)).toEqual(['a', 'c', 'b']);
     expect(moveItem(['a', 'b', 'c'], 0, -1)).toEqual(['a', 'b', 'c']);
     expect(moveItem(['a', 'b', 'c'], 2, 1)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('rebaseEdits', () => {
+  it('keeps changes made elsewhere to fields the form left alone', () => {
+    const initial = hw({ notes: undefined });
+    const draft = { ...initial, notes: 'Bring goggles' };
+    const live = { ...initial, status: 'done' as const, completedAt: 123, updatedAt: 999 };
+    expect(rebaseEdits(initial, draft, live)).toEqual({ ...live, notes: 'Bring goggles' });
+  });
+  it("uses the form's value for fields the user changed, even if they changed elsewhere too", () => {
+    const initial = hw({ title: 'A', priority: 'low' });
+    const out = rebaseEdits(initial, { ...initial, title: 'Mine' }, { ...initial, title: 'Theirs', priority: 'high' });
+    expect(out.title).toBe('Mine');
+    expect(out.priority).toBe('high');
+  });
+  it('clears fields the user emptied and takes arrays whole', () => {
+    const initial = hw({ dueTime: '08:00', subtasks: [{ id: 's1', text: 'One', done: false }] });
+    const draft = { ...initial, dueTime: undefined, subtasks: [...initial.subtasks, { id: 's2', text: 'Two', done: false }] };
+    const live = { ...initial, subtasks: [{ id: 's1', text: 'One', done: true }] };
+    const out = rebaseEdits(initial, draft, live);
+    expect(out.dueTime).toBeUndefined();
+    expect(out.subtasks.map((s) => s.id)).toEqual(['s1', 's2']);
+  });
+  it('merges nested objects field by field', () => {
+    const initial = cls('chem', { teacher: { name: 'Rivera', email: 'r@x.org' }, archived: undefined });
+    const draft = { ...initial, teacher: { ...initial.teacher, officeHours: 'Tue 2:50' } };
+    const live = { ...initial, teacher: { ...initial.teacher, email: 'rivera@x.org' }, archived: true };
+    expect(rebaseEdits(initial, draft, live)).toEqual({ ...live, teacher: { name: 'Rivera', email: 'rivera@x.org', officeHours: 'Tue 2:50' } });
+  });
+  it('returns the live copy when nothing was edited', () => {
+    const initial = hw();
+    const live = { ...initial, status: 'in_progress' as const };
+    expect(rebaseEdits(initial, { ...initial }, live)).toEqual(live);
   });
 });
