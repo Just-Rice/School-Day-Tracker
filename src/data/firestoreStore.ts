@@ -5,7 +5,8 @@
 import { collection, deleteDoc, deleteField, doc, getDocs, onSnapshot, setDoc, writeBatch, type DocumentData, type FieldValue, type Firestore, type QueryDocumentSnapshot } from 'firebase/firestore';
 import type { Assignment, ClassInfo, Profile } from '../types';
 import { getDb } from '../firebase';
-import { clean, type DataStore, type Unsubscribe } from './store';
+import { describeLimitProblem, limitError, overAccountLimit } from './limits';
+import { clean, type DataStore, type OnError, type Unsubscribe } from './store';
 
 export const CLASSES = 'classes';
 export const ASSIGNMENTS = 'assignments';
@@ -67,7 +68,7 @@ function fromItemDoc<T extends { id: string }>(d: QueryDocumentSnapshot): T {
  * saves before navigating, so resolve after a short grace period instead, and report a failure
  * that arrives later (e.g. permission denied) through `onLateError`.
  */
-export function settleWrite(p: Promise<unknown>, ms: number, onLateError?: (e: Error) => void): Promise<void> {
+export function settleWrite(p: Promise<unknown>, ms: number, onLateError?: (e: Error) => void, toError: (e: unknown) => Error = friendlyFirestoreError): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     let settled = false;
     const timer = setTimeout(() => {
@@ -82,7 +83,7 @@ export function settleWrite(p: Promise<unknown>, ms: number, onLateError?: (e: E
         resolve();
       },
       (e: unknown) => {
-        const err = friendlyFirestoreError(e);
+        const err = toError(e);
         if (settled) onLateError?.(err);
         else {
           settled = true;
@@ -109,6 +110,13 @@ const FRIENDLY: Record<string, string> = {
   'deadline-exceeded': 'Syncing took too long. Check your connection and try again.',
 };
 
+// A save the rules refuse is almost always data they don't accept (the limits in ./limits are
+// checked before writing, so this is the rare rest), not a sign-in problem.
+const FRIENDLY_SAVE: Record<string, string> = {
+  ...FRIENDLY,
+  'permission-denied': 'Your account didn’t accept this change: something in it may be too long or not allowed. Check what you entered and try again.',
+};
+
 export function friendlyFirestoreError(e: unknown): Error {
   const code = (e as { code?: unknown } | null)?.code;
   if (typeof code === 'string' && FRIENDLY[code]) return new Error(FRIENDLY[code]);
@@ -116,14 +124,21 @@ export function friendlyFirestoreError(e: unknown): Error {
   return new Error('Something went wrong while syncing.');
 }
 
-// Every live subscription's error callback (ref-counted: DataProvider passes one callback to all
-// three). A write that fails after its promise already resolved is reported to them instead.
-const lateErrorListeners = new Map<(e: Error) => void, number>();
-function reportLate(e: Error) {
-  lateErrorListeners.forEach((_, l) => l(e));
+/** like friendlyFirestoreError, for a write of data (not a delete) */
+export function friendlySaveError(e: unknown): Error {
+  const code = (e as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && FRIENDLY_SAVE[code]) return new Error(FRIENDLY_SAVE[code]);
+  return friendlyFirestoreError(e);
 }
 
-function track(onError: ((e: Error) => void) | undefined, unsub: Unsubscribe): Unsubscribe {
+// Every live subscription's error callback (ref-counted: DataProvider passes one callback to all
+// three). A write that fails after its promise already resolved is reported to them instead.
+const lateErrorListeners = new Map<OnError, number>();
+function reportLate(e: Error) {
+  lateErrorListeners.forEach((_, l) => l(e, 'save'));
+}
+
+function track(onError: OnError | undefined, unsub: Unsubscribe): Unsubscribe {
   if (!onError) return unsub;
   lateErrorListeners.set(onError, (lateErrorListeners.get(onError) ?? 0) + 1);
   let done = false;
@@ -137,7 +152,18 @@ function track(onError: ((e: Error) => void) | undefined, unsub: Unsubscribe): U
   };
 }
 
-const write = (p: Promise<unknown>) => settleWrite(p, graceMs(2500), reportLate);
+const save = (p: Promise<unknown>) => settleWrite(p, graceMs(2500), reportLate, friendlySaveError);
+const remove = (p: Promise<unknown>) => settleWrite(p, graceMs(2500), reportLate);
+
+/**
+ * Refuses data over the account limits before it's written. The rules would refuse it anyway,
+ * but only with a bare permission-denied, and only once online: an offline edit would look saved
+ * and then quietly roll back when the device reconnects.
+ */
+function checked(kind: 'class' | 'assignment' | 'profile', d: object, write: () => Promise<void>): Promise<void> {
+  const over = overAccountLimit(kind, d);
+  return over ? Promise.reject(limitError(over)) : write();
+}
 
 // ---------------------------------------------------------------------------------------------
 // The store
@@ -151,7 +177,7 @@ function refs(db: Firestore, uid: string) {
 export function createFirestoreStore(uid: string): DataStore {
   const db = getDb();
   const r = refs(db, uid);
-  const fail = (onError?: (e: Error) => void) => (e: unknown) => onError?.(friendlyFirestoreError(e));
+  const fail = (onError?: OnError) => (e: unknown) => onError?.(friendlyFirestoreError(e), 'listen');
 
   return {
     kind: 'firestore',
@@ -163,8 +189,10 @@ export function createFirestoreStore(uid: string): DataStore {
       );
     },
     saveProfile(p) {
-      const { data, fields } = toFirestoreProfile<FieldValue>(p, deleteField());
-      return write(setDoc(r.user, data, { mergeFields: fields }));
+      return checked('profile', p, () => {
+        const { data, fields } = toFirestoreProfile<FieldValue>(p, deleteField());
+        return save(setDoc(r.user, data, { mergeFields: fields }));
+      });
     },
 
     subscribeClasses(cb, onError) {
@@ -174,10 +202,10 @@ export function createFirestoreStore(uid: string): DataStore {
       );
     },
     saveClass(c) {
-      return write(setDoc(doc(r.classes, c.id), clean(c)));
+      return checked('class', c, () => save(setDoc(doc(r.classes, c.id), clean(c))));
     },
     deleteClass(id) {
-      return write(deleteDoc(doc(r.classes, id)));
+      return remove(deleteDoc(doc(r.classes, id)));
     },
 
     subscribeAssignments(cb, onError) {
@@ -187,10 +215,10 @@ export function createFirestoreStore(uid: string): DataStore {
       );
     },
     saveAssignment(a) {
-      return write(setDoc(doc(r.assignments, a.id), clean(a)));
+      return checked('assignment', a, () => save(setDoc(doc(r.assignments, a.id), clean(a))));
     },
     deleteAssignment(id) {
-      return write(deleteDoc(doc(r.assignments, id)));
+      return remove(deleteDoc(doc(r.assignments, id)));
     },
   };
 }
@@ -208,12 +236,12 @@ export function chunk<T>(items: T[], size: number = BATCH_LIMIT): T[][] {
   return out;
 }
 
-async function commitAll(db: Firestore, ops: Op[]): Promise<void> {
+async function commitAll(db: Firestore, ops: Op[], toError?: (e: unknown) => Error): Promise<void> {
   for (const part of chunk(ops)) {
     const b = writeBatch(db);
     part.forEach((op) => op(b));
     // bulk jobs get a longer grace period than single saves, but still don't hang offline
-    await settleWrite(b.commit(), graceMs(8000), reportLate);
+    await settleWrite(b.commit(), graceMs(8000), reportLate, toError);
   }
 }
 
@@ -228,8 +256,18 @@ export interface AccountCopy {
   assignments: Assignment[];
 }
 
-/** Writes this device's data into users/{uid} (same ids, so running it twice is harmless). */
+/**
+ * Writes this device's data into users/{uid} (same ids, so running it twice is harmless). Local
+ * data has no size limits, so anything over the account's is reported by name before writing.
+ */
 export async function copyLocalDataToAccount(uid: string, data: AccountCopy): Promise<void> {
+  const tooBig = (kind: 'class' | 'assignment' | 'profile', d: object, what: string) => {
+    const over = overAccountLimit(kind, d);
+    if (over) throw new Error(`Couldn’t copy ${what} to your account: ${describeLimitProblem(over)}. Sign out, ${over.list ? 'remove some' : 'shorten it'} in the copy saved on this device, then sign in and copy again.`);
+  };
+  if (data.profile) tooBig('profile', data.profile, 'this device’s settings');
+  for (const c of data.classes) tooBig('class', c, `the class “${c.name}”`);
+  for (const a of data.assignments) tooBig('assignment', a, `the assignment “${a.title}”`);
   const db = getDb();
   const r = refs(db, uid);
   const ops: Op[] = [];
@@ -239,7 +277,7 @@ export async function copyLocalDataToAccount(uid: string, data: AccountCopy): Pr
   }
   for (const c of data.classes) ops.push((b) => b.set(doc(r.classes, c.id), clean(c)));
   for (const a of data.assignments) ops.push((b) => b.set(doc(r.assignments, a.id), clean(a)));
-  await commitAll(db, ops);
+  await commitAll(db, ops, friendlySaveError);
 }
 
 /** Deletes every class, assignment and the profile of users/{uid}. */

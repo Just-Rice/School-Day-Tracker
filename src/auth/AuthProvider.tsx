@@ -12,7 +12,7 @@ import {
   updateProfile,
   type User,
 } from 'firebase/auth';
-import { firebaseEnabled, getFirebaseAuth } from '../firebase';
+import { closeDb, firebaseEnabled, getFirebaseAuth, startedDb, writesSynced } from '../firebase';
 import { AuthError, authErrorCode, isCancelled } from '../components/account/authErrors';
 
 export interface AppUser {
@@ -77,9 +77,13 @@ function FirebaseAuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const auth = getFirebaseAuth();
+    let uid: string | null = null;
     const unsub = onAuthStateChanged(
       auth,
       (u) => {
+        // the account signed out (in this tab or another): its Firestore instance is done with
+        if (uid && uid !== (u?.uid ?? null)) void closeDb(startedDb());
+        uid = u?.uid ?? null;
         setUser((prev) => sameUser(prev, u ? toAppUser(u) : null));
         setLoading(false);
       },
@@ -146,11 +150,17 @@ function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    // Firestore keeps an offline copy of the account's data in this browser; delete it after
+    // signing out, unless edits made offline are still waiting in it to sync (then it stays, and
+    // they sync the next time this account signs in here).
+    const db = startedDb();
+    const synced = db ? await writesSynced(db) : false;
     try {
       await fbSignOut(getFirebaseAuth());
     } catch (e) {
       throw new AuthError(e);
     }
+    await closeDb(db, synced);
   }, []);
 
   const value = useMemo<AuthState>(

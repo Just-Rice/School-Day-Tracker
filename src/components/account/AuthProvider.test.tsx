@@ -23,6 +23,11 @@ const fb = vi.hoisted(() => {
     sendPasswordResetEmail: vi.fn(async (..._a: unknown[]) => {}),
     signOut: vi.fn(async (..._a: unknown[]) => {}),
     providers: [] as { params: Record<string, string> }[],
+    // this tab's Firestore instance (firebase.ts) and the calls made around a sign-out
+    db: { name: 'fake-db' } as object | undefined,
+    calls: [] as string[],
+    writesSynced: vi.fn(async (..._a: unknown[]) => true),
+    closeDb: vi.fn(async (..._a: unknown[]) => {}),
   };
 });
 
@@ -47,7 +52,13 @@ vi.mock('firebase/auth', () => ({
     }
   },
 }));
-vi.mock('../../firebase', () => ({ firebaseEnabled: true, getFirebaseAuth: () => fb.auth }));
+vi.mock('../../firebase', () => ({
+  firebaseEnabled: true,
+  getFirebaseAuth: () => fb.auth,
+  startedDb: () => fb.db,
+  writesSynced: fb.writesSynced,
+  closeDb: fb.closeDb,
+}));
 
 import { AuthProvider, useAuth, type AuthState } from '../../auth/AuthProvider';
 
@@ -70,6 +81,11 @@ function mount() {
 beforeEach(() => {
   vi.clearAllMocks();
   fb.providers.length = 0;
+  fb.db = { name: 'fake-db' };
+  fb.calls.length = 0;
+  fb.writesSynced.mockImplementation(async () => (fb.calls.push('writesSynced'), true));
+  fb.signOut.mockImplementation(async () => void fb.calls.push('signOut'));
+  fb.closeDb.mockImplementation(async (_db: unknown, clear?: unknown) => void fb.calls.push(clear ? 'closeDb+clear' : 'closeDb'));
 });
 
 describe('AuthProvider with Firebase', () => {
@@ -129,6 +145,33 @@ describe('AuthProvider with Firebase', () => {
     expect(fb.sendPasswordResetEmail).toHaveBeenCalledWith(fb.auth, 'ana@example.com');
     await act(() => auth.signOut());
     expect(fb.signOut).toHaveBeenCalledWith(fb.auth);
+  });
+
+  it('deletes the offline copy of the account’s data after signing out, once every edit has synced', async () => {
+    mount();
+    act(() => fb.emitUser({ uid: 'u1', email: 'ana@example.com', displayName: 'Ana', photoURL: null }));
+    await act(() => auth.signOut());
+    expect(fb.writesSynced).toHaveBeenCalledWith(fb.db);
+    expect(fb.calls).toEqual(['writesSynced', 'signOut', 'closeDb+clear']);
+    expect(fb.closeDb).toHaveBeenLastCalledWith(fb.db, true);
+  });
+
+  it('keeps the offline copy when edits made offline haven’t synced yet', async () => {
+    fb.writesSynced.mockResolvedValueOnce(false);
+    mount();
+    await act(() => auth.signOut());
+    expect(fb.signOut).toHaveBeenCalled();
+    expect(fb.closeDb).toHaveBeenLastCalledWith(fb.db, false);
+  });
+
+  it('stops Firestore when the account signs out in another tab', () => {
+    mount();
+    act(() => fb.emitUser({ uid: 'u1', email: 'ana@example.com', displayName: 'Ana', photoURL: null }));
+    act(() => fb.emitUser({ uid: 'u1', email: 'ana@example.com', displayName: 'Ana B.', photoURL: null }));
+    expect(fb.closeDb).not.toHaveBeenCalled();
+    act(() => fb.emitUser(null));
+    expect(fb.closeDb).toHaveBeenCalledWith(fb.db);
+    expect(fb.calls).toEqual(['closeDb']);
   });
 
   it('reports a failed redirect sign-in when the page comes back', async () => {

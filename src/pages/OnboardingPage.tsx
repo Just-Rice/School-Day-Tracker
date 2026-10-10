@@ -20,7 +20,7 @@ const LOGIN_STATE = { from: '/welcome' };
 
 export default function OnboardingPage() {
   useAppearance();
-  const { user, loading: authLoading, firebaseEnabled, signInWithGoogle } = useAuth();
+  const { user, loading: authLoading, firebaseEnabled, signInWithGoogle, redirectError } = useAuth();
   const { store, profile, classes, assignments, loading, saveProfile } = useData();
   const navigate = useNavigate();
   // someone who set the app up without an account and then signed in starts from those choices
@@ -49,7 +49,8 @@ export default function OnboardingPage() {
     if (accountName) setDraft((d) => (d.displayName ? d : { ...d, displayName: accountName }));
   }, [accountName]);
 
-  const alreadyDone = !authLoading && !loading && profile.onboarded && !finishing;
+  // not while an error is up: saving the profile can work and copying this device's data then fail
+  const alreadyDone = !authLoading && !loading && profile.onboarded && !finishing && !error;
   useEffect(() => {
     if (alreadyDone) clearDraft();
   }, [alreadyDone]);
@@ -73,6 +74,8 @@ export default function OnboardingPage() {
   const canCopy = !!user && store.kind === 'firestore' && localItems > 0;
   const willCopy = canCopy && copyLocal;
   const hasClasses = classes.length > 0 || (willCopy && local.classes > 0);
+  // a Google sign-in that failed after a redirect comes back to the account step
+  const shownError = error ?? (!user && draft.step === 3 ? redirectError : null);
 
   const finish = async () => {
     setFinishing(true);
@@ -245,9 +248,9 @@ export default function OnboardingPage() {
       </div>
       <Card className="acct-step">
         {body}
-        {error && (
+        {shownError && (
           <div className="banner banner-error acct-banner" role="alert">
-            {error}
+            {shownError}
           </div>
         )}
       </Card>

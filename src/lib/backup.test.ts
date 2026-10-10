@@ -1,5 +1,9 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { Assignment, ClassInfo, Profile } from '../types';
+import type { Assignment, ClassInfo, Profile, SchoolSchedule } from '../types';
+import { CLASS_TEXT } from '../data/limits';
+import { meetingTimes, resolveDay, rotationRows, sortSlots, validateSchedule } from './schedule';
 import {
   BACKUP_APP,
   BACKUP_VERSION,
@@ -129,6 +133,98 @@ describe('parseBackup', () => {
     const parsed = parseBackup(file({ profile: { ...profile(), customSchedule } }));
     expect(parsed.profile?.customSchedule).toEqual(customSchedule);
   });
+
+  const shipped = (id: string): SchoolSchedule => JSON.parse(fs.readFileSync(path.resolve(__dirname, `../../public/schools/${id}/schedule.json`), 'utf8'));
+
+  it('keeps the schools’ own schedules, used as a custom schedule, exactly', () => {
+    for (const id of ['hsn', 'cms']) {
+      const customSchedule = shipped(id);
+      const parsed = parseBackup(JSON.stringify(makeBackup({ profile: profile({ schoolId: id as Profile['schoolId'], customSchedule }), classes: [], assignments: [] })));
+      expect(parsed.profile?.customSchedule).toEqual(customSchedule);
+      expect(parsed.warnings).toEqual([]);
+    }
+  });
+
+  it('keeps what the schedule editor can save even when it isn’t finished', () => {
+    const customSchedule = {
+      ...shipped('hsn'),
+      calendar: { firstDay: '', lastDay: '2027-06-20', anchor: { date: '', cycleDay: 'A' }, noSchool: [{ date: '', name: '' }], specialDays: [{ date: '2026-12-01', bell: '', advance: true }] },
+    };
+    const parsed = parseBackup(JSON.stringify(makeBackup({ profile: profile({ customSchedule }), classes: [], assignments: [] })));
+    expect(parsed.profile?.customSchedule).toEqual(customSchedule);
+    expect(parsed.warnings).toEqual([]);
+  });
+
+  it('leaves out hand-edited bell times the pages can’t use, so they don’t crash', () => {
+    const s = shipped('hsn');
+    const days = s.bells[0].days;
+    const [day, slots] = Object.entries(days)[0];
+    const edited = {
+      ...s,
+      bells: [
+        {
+          ...s.bells[0],
+          days: { ...days, [day]: [{ ...slots[0], start: 740 }, null, { period: slots[1].period, end: slots[1].end }, ...slots.slice(2)] },
+        },
+        ...s.bells.slice(1),
+      ],
+      calendar: { ...s.calendar, noSchool: [...s.calendar.noSchool, null, { date: 20261201 }] },
+    };
+    const parsed = parseBackup(file({ profile: { ...profile(), customSchedule: edited } }));
+    const got = parsed.profile!.customSchedule!;
+    // what the Today and Week pages do with it
+    expect(() => {
+      for (const b of got.bells) {
+        for (const list of Object.values(b.days)) sortSlots(list);
+        rotationRows(got, b);
+      }
+      for (let d = 1; d <= 28; d++) resolveDay(got, `2026-10-${String(d).padStart(2, '0')}`);
+      meetingTimes(got, { periods: [slots[0].period] });
+      validateSchedule(got);
+    }).not.toThrow();
+    expect(got.bells).toHaveLength(s.bells.length);
+    expect(got.bells[0].days[day]).toEqual(slots.slice(2));
+    expect(got.calendar.noSchool).toEqual(s.calendar.noSchool);
+    expect(parsed.warnings).toEqual(['5 parts of the custom bell schedule (bell times, days off…) couldn’t be read and were left out. Check it on the Bell schedule page.']);
+  });
+
+  it('drops a custom schedule with no usable bell schedule', () => {
+    const s = shipped('hsn');
+    const parsed = parseBackup(file({ profile: { ...profile(), customSchedule: { ...s, bells: [{ id: 7, days: {} }] } } }));
+    expect(parsed.profile?.customSchedule).toBeUndefined();
+    expect(parsed.warnings).toEqual(['The custom bell schedule in the file was damaged, so it was left out.']);
+  });
+
+  it('keeps everything the class and homework forms accept', () => {
+    // over the old caps (grade 20, course code 50, office hours 500, a detail 2000, notes 20000)
+    const c = cls('a', 5, {
+      grade: 'A- (91.6%) after the unit 2 retake',
+      courseCode: 'C'.repeat(56),
+      teacher: { name: 'Ms. K', officeHours: 'h'.repeat(600) },
+      customFields: [{ key: 'Locker', value: 'v'.repeat(2500) }],
+      notes: 'n'.repeat(25000),
+    });
+    const a = hw('h', 6, { notes: 'm'.repeat(25000) });
+    const parsed = parseBackup(JSON.stringify(makeBackup({ profile: null, classes: [c], assignments: [a] })));
+    expect(parsed.classes).toEqual([c]);
+    expect(parsed.assignments).toEqual([a]);
+    expect(parsed.warnings).toEqual([]);
+  });
+
+  it('says what it shortened to fit an account, item by item', () => {
+    const parsed = parseBackup(
+      file({
+        classes: [cls('a', 1, { name: 'Chemistry', grade: 'g'.repeat(60), notes: 'n'.repeat(60000) }), cls('b')],
+        assignments: [hw('h', 1, { title: 'Essay', subtasks: Array.from({ length: 301 }, (_, i) => ({ id: `s${i}`, text: 'step', done: false })) })],
+        profile: { ...profile(), displayName: 'd'.repeat(120) },
+      }),
+    );
+    expect(parsed.classes[0].grade).toHaveLength(50);
+    expect(parsed.classes[0].notes).toHaveLength(50000);
+    expect(parsed.assignments[0].subtasks).toHaveLength(300);
+    expect(parsed.profile?.displayName).toHaveLength(100);
+    expect(parsed.warnings).toEqual(['Some text or lists were longer than the app can keep, so they were shortened: “Chemistry” (current grade, notes), “Essay” (steps), your settings (name).']);
+  });
 });
 
 describe('sanitizeClass', () => {
@@ -152,8 +248,8 @@ describe('sanitizeClass', () => {
     });
   });
 
-  it('caps very long text', () => {
-    expect(sanitizeClass({ id: 'x', name: 'n'.repeat(1000) })!.name).toHaveLength(200);
+  it('caps very long text at what an account can store', () => {
+    expect(sanitizeClass({ id: 'x', name: 'n'.repeat(1000) })!.name).toHaveLength(CLASS_TEXT.name);
   });
 });
 

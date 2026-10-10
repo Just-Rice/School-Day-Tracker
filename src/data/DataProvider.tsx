@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Assignment, ClassInfo, Profile } from '../types';
 import { useAuth } from '../auth/AuthProvider';
+import LoadErrorScreen from '../components/account/LoadErrorScreen';
 import { createFirestoreStore } from './firestoreStore';
 import { localStore } from './localStore';
-import { DEFAULT_PROFILE, type DataStore } from './store';
+import { DEFAULT_PROFILE, type DataStore, type ErrorSource } from './store';
 
 export interface DataState {
   store: DataStore;
@@ -13,6 +14,7 @@ export interface DataState {
   assignments: Assignment[];
   /** true until the first snapshot of each collection arrives */
   loading: boolean;
+  /** a sync problem: a subscription that failed (until it works again) or a failed save (until a later save works) */
   error: string | null;
   saveProfile(p: Partial<Profile>): Promise<void>;
   saveClass(c: ClassInfo): Promise<void>;
@@ -42,23 +44,71 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [profileSnap, setProfile] = useState<Snap<Profile>>(null);
   const [classesSnap, setClasses] = useState<Snap<ClassInfo[]>>(null);
   const [assignmentsSnap, setAssignments] = useState<Snap<Assignment[]>>(null);
-  const [error, setError] = useState<string | null>(null);
   const profile = profileSnap?.from === store ? profileSnap.v : null;
   const classes = classesSnap?.from === store ? classesSnap.v : null;
   const assignments = assignmentsSnap?.from === store ? assignmentsSnap.v : null;
+  const loading = profile === null || classes === null || assignments === null;
+
+  // Errors remember their store as well. A subscription that fails stops for good (Firestore
+  // listeners don't recover), so they're all subscribed again (`attempt`) on Try again and when
+  // the app comes back to the foreground or online; the error goes once all three deliver again.
+  // A failed save's error goes once a later save works.
+  type Failure = { from: DataStore; message: string } | null;
+  const [listenFailure, setListenFailure] = useState<Failure>(null);
+  const [saveFailure, setSaveFailure] = useState<Failure>(null);
+  const [attempt, setAttempt] = useState(0);
+  const listenError = listenFailure?.from === store ? listenFailure.message : null;
+  const saveError = saveFailure?.from === store ? saveFailure.message : null;
 
   useEffect(() => {
-    setError(null);
-    const fail = (e: Error) => setError(e.message);
-    const u1 = store.subscribeProfile((p) => setProfile({ from: store, v: p ?? ({} as Profile) }), fail);
-    const u2 = store.subscribeClasses((v) => setClasses({ from: store, v }), fail);
-    const u3 = store.subscribeAssignments((v) => setAssignments({ from: store, v }), fail);
+    let live = true;
+    const waiting = new Set(['profile', 'classes', 'assignments']);
+    const got = (k: string) => {
+      if (waiting.delete(k) && waiting.size === 0) setListenFailure((f) => (f?.from === store ? null : f));
+    };
+    const fail = (e: Error, source?: ErrorSource) => {
+      if (!live) return;
+      if (source === 'save') setSaveFailure({ from: store, message: e.message });
+      else setListenFailure({ from: store, message: e.message });
+    };
+    const u1 = store.subscribeProfile((p) => {
+      setProfile({ from: store, v: p ?? ({} as Profile) });
+      got('profile');
+    }, fail);
+    const u2 = store.subscribeClasses((v) => {
+      setClasses({ from: store, v });
+      got('classes');
+    }, fail);
+    const u3 = store.subscribeAssignments((v) => {
+      setAssignments({ from: store, v });
+      got('assignments');
+    }, fail);
     return () => {
+      live = false;
       u1();
       u2();
       u3();
     };
-  }, [store]);
+  }, [store, attempt]);
+
+  const listenFailed = listenError !== null;
+  useEffect(() => {
+    if (!listenFailed) return;
+    const again = () => {
+      if (document.visibilityState !== 'hidden') setAttempt((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', again);
+    window.addEventListener('online', again);
+    return () => {
+      document.removeEventListener('visibilitychange', again);
+      window.removeEventListener('online', again);
+    };
+  }, [listenFailed]);
+
+  const retry = useCallback(() => {
+    setListenFailure(null);
+    setAttempt((n) => n + 1);
+  }, []);
 
   const wrap = useCallback(
     <A extends unknown[]>(fn: (...a: A) => Promise<void>) =>
@@ -66,11 +116,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         try {
           await fn(...a);
         } catch (e) {
-          setError((e as Error).message);
+          setSaveFailure({ from: store, message: (e as Error).message });
           throw e;
         }
+        setSaveFailure(null);
       },
-    [],
+    [store],
   );
 
   const value = useMemo<DataState>(
@@ -79,18 +130,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
       profile: { ...DEFAULT_PROFILE, ...(profile ?? {}), dayOverrides: { ...(profile?.dayOverrides ?? {}) } },
       classes: [...(classes ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
       assignments: assignments ?? [],
-      loading: profile === null || classes === null || assignments === null,
-      error,
+      loading,
+      error: listenError ?? saveError,
       saveProfile: wrap((p: Partial<Profile>) => store.saveProfile(p)),
       saveClass: wrap((c: ClassInfo) => store.saveClass({ ...c, updatedAt: Date.now() })),
       deleteClass: wrap((id: string) => store.deleteClass(id)),
       saveAssignment: wrap((a: Assignment) => store.saveAssignment({ ...a, updatedAt: Date.now() })),
       deleteAssignment: wrap((id: string) => store.deleteAssignment(id)),
     }),
-    [store, profile, classes, assignments, error, wrap],
+    [store, profile, classes, assignments, loading, listenError, saveError, wrap],
   );
 
-  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+  // Nothing could be loaded (e.g. a new device and the sync server refuses): say so and offer a
+  // way out, instead of the pages' loading spinner forever.
+  return <DataContext.Provider value={value}>{loading && listenError ? <LoadErrorScreen message={listenError} onRetry={retry} /> : children}</DataContext.Provider>;
 }
 
 export function useData(): DataState {

@@ -2,7 +2,17 @@
 // Without them the app runs in local-only mode and nothing here is ever initialized.
 import { getApp, getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app';
 import { browserLocalPersistence, browserPopupRedirectResolver, indexedDBLocalPersistence, inMemoryPersistence, initializeAuth, useDeviceLanguage, type Auth } from 'firebase/auth';
-import { initializeFirestore, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager, type Firestore, type FirestoreSettings } from 'firebase/firestore';
+import {
+  clearIndexedDbPersistence,
+  initializeFirestore,
+  memoryLocalCache,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  terminate,
+  waitForPendingWrites,
+  type Firestore,
+  type FirestoreSettings,
+} from 'firebase/firestore';
 
 const env = import.meta.env;
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
@@ -66,4 +76,45 @@ export function getDb(): Firestore {
     db = initializeFirestore(fb, { ...base, localCache: memoryLocalCache() });
   }
   return db;
+}
+
+/** this tab's Firestore, if something has started it (never starts one) */
+export function startedDb(): Firestore | undefined {
+  return db;
+}
+
+function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p, new Promise<T>((resolve) => (timer = setTimeout(() => resolve(fallback), ms)))]).finally(() => clearTimeout(timer));
+}
+
+/** true once every change saved through `d` has reached the server; false if that takes over `ms` (e.g. offline) */
+export function writesSynced(d: Firestore, ms = 3000): Promise<boolean> {
+  const synced = Promise.resolve()
+    .then(() => waitForPendingWrites(d))
+    .then(
+      () => true,
+      () => false,
+    );
+  return within(synced, ms, false);
+}
+
+/**
+ * Stops a Firestore instance once its account has signed out (AuthProvider does this in every
+ * open tab), so the next sign-in starts a fresh one. With `clearCache` it also deletes this
+ * browser's offline copy of the account's documents (classes, homework, teacher contacts), so the
+ * next person to use a shared computer can't read them; Firestore stops in other tabs by itself
+ * when that happens. Only clear once writesSynced(): edits still waiting to sync go with the cache.
+ * Never throws.
+ */
+export async function closeDb(d: Firestore | undefined, clearCache = false): Promise<void> {
+  if (!d) return;
+  if (db === d) db = undefined;
+  const run = async () => {
+    await terminate(d);
+    if (clearCache) await clearIndexedDbPersistence(d);
+  };
+  const done = run().catch((e: unknown) => console.warn('Could not clear the offline copy of the account’s data', e));
+  // deleting the cache waits for every other tab to let go of it; don't keep the student waiting
+  await within(done, 5000, undefined);
 }

@@ -43,7 +43,7 @@ vi.mock('firebase/firestore', () => ({
 }));
 vi.mock('../firebase', () => ({ getDb: () => ({}) }));
 
-import { BATCH_LIMIT, chunk, copyLocalDataToAccount, createFirestoreStore, deleteAllUserData, friendlyFirestoreError, fromFirestoreProfile, settleWrite, toFirestoreProfile } from './firestoreStore';
+import { BATCH_LIMIT, chunk, copyLocalDataToAccount, createFirestoreStore, deleteAllUserData, friendlyFirestoreError, friendlySaveError, fromFirestoreProfile, settleWrite, toFirestoreProfile } from './firestoreStore';
 
 const DEL = Symbol('delete');
 
@@ -160,6 +160,12 @@ describe('friendlyFirestoreError', () => {
     expect(friendlyFirestoreError(e)).toBe(e);
     expect(friendlyFirestoreError('weird').message).toMatch(/syncing/);
   });
+
+  it('does not tell someone whose save was refused to sign out', () => {
+    expect(friendlySaveError({ code: 'permission-denied' }).message).toMatch(/didn’t accept this change/);
+    expect(friendlySaveError({ code: 'permission-denied' }).message).not.toMatch(/sign/i);
+    expect(friendlySaveError({ code: 'unavailable' }).message).toMatch(/back online/);
+  });
 });
 
 describe('chunk', () => {
@@ -193,6 +199,19 @@ describe('createFirestoreStore', () => {
     expect((fs.setDoc.mock.calls[1][0] as { path: string }).path).toBe('users/u1/assignments/a1');
   });
 
+  it('refuses data over the account limits before writing it, naming the field', async () => {
+    const store = createFirestoreStore('u1');
+    await expect(store.saveClass(makeClass('c1', { grade: 'A- (91.6%) after the unit 2 retake on Oct 3, see notes!' }))).rejects.toThrow(
+      'This can’t be synced to your account: the current grade is too long (55 characters; an account can keep up to 50). Shorten it and save again.',
+    );
+    await expect(store.saveAssignment({ ...makeAssignment('a1'), notes: 'y'.repeat(60000) })).rejects.toThrow(/notes are too long \(60,000 characters/);
+    await expect(store.saveProfile({ displayName: 'n'.repeat(101) })).rejects.toThrow(/name is too long/);
+    // nothing reached the cache, so nothing rolls back later
+    expect(fs.setDoc).not.toHaveBeenCalled();
+    await store.saveClass(makeClass('c1', { grade: 'g'.repeat(50) }));
+    expect(fs.setDoc).toHaveBeenCalledTimes(1);
+  });
+
   it('deletes documents by id', async () => {
     const store = createFirestoreStore('u1');
     await store.deleteClass('c9');
@@ -220,6 +239,8 @@ describe('createFirestoreStore', () => {
     const unsub = store.subscribeAssignments(vi.fn(), onError);
     fs.snapshots.get('users/u1/assignments')!.error!({ code: 'permission-denied' });
     expect(onError.mock.calls[0][0].message).toMatch(/access/);
+    // the listener itself failed (and stopped), as opposed to a late save
+    expect(onError.mock.calls[0][1]).toBe('listen');
     unsub();
     expect(fs.snapshots.has('users/u1/assignments')).toBe(false);
   });
@@ -240,8 +261,9 @@ describe('createFirestoreStore', () => {
         await vi.advanceTimersByTimeAsync(0);
       };
       await failLater();
-      // one callback shared by two subscriptions is told once
+      // one callback shared by two subscriptions is told once, as a failed save
       expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/didn’t accept this change/) }), 'save');
       unsubs[0]();
       unsubs[0]();
       // the other subscription still uses the same callback
@@ -269,6 +291,12 @@ describe('bulk operations', () => {
     expect(data.dayOverrides).toEqual({ '2026-10-09': { noSchool: true } });
     expect(opts.mergeFields).toContain('dayOverrides');
     expect(fs.batches.every((b) => b.commit.mock.calls.length === 1)).toBe(true);
+  });
+
+  it('names a local class that is too big for the account instead of failing the whole copy blindly', async () => {
+    const copy = copyLocalDataToAccount('u1', { profile: null, classes: [makeClass('c1'), makeClass('c2', { name: 'AP Chem', courseCode: 'x'.repeat(101) })], assignments: [makeAssignment('a1')] });
+    await expect(copy).rejects.toThrow(/^Couldn’t copy the class “AP Chem” to your account: the course code is too long \(101 characters; an account can keep up to 100\)\. Sign out, shorten it/);
+    expect(fs.batches).toHaveLength(0);
   });
 
   it('skips the profile when there is nothing to copy', async () => {
