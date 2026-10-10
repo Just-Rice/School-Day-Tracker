@@ -34,6 +34,8 @@ interface Props {
   onClear(): void;
   onClose(): void;
   onStep(step: DirectionStep): void;
+  /** the "Start from room" search got focus */
+  onSearchFocus?(): void;
 }
 
 const OTHER = '__other';
@@ -114,6 +116,7 @@ export default function RoomPanel(p: Props) {
           label="Start from room"
           placeholder="Start from room…"
           autoFocus
+          onFocusChange={(f) => f && p.onSearchFocus?.()}
           onPick={(r) => {
             setPicking(false);
             if (p.from) p.onFrom(r.key);

@@ -266,7 +266,8 @@
   stroke: rgba(255, 255, 255, 0.85);
   stroke-width: 2px;
   stroke-dasharray: 2 12;
-  animation: mp-flow 0.9s linear infinite;
+  /* a few runs to show which way to go, then still: animating the dashes repaints the whole map */
+  animation: mp-flow 0.9s linear 4;
 }
 @keyframes mp-flow {
   to {
@@ -787,8 +788,9 @@
   .mp-shell[data-sheet='open'] .mp-scale {
     display: none;
   }
-  /* a picked room takes the search box's place until the sheet is pulled up */
-  .mp-panel[data-room='true'][data-open='false'] .mp-search {
+  /* a picked room takes the search box's place until the sheet is pulled up (not the room
+     panel's own "Start from room" search) */
+  .mp-panel[data-room='true'][data-open='false'] .mp-panel-body > .mp-search {
     display: none;
   }
 }

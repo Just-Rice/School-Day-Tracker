@@ -44,6 +44,8 @@ interface Props {
 
 const MAX_K = 40;
 const ZOOM_STEP = 1.6;
+/** a tap waits this long before picking a room, so a double-click can zoom in instead */
+const DOUBLE_MS = 250;
 
 const reducedMotion = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -138,7 +140,20 @@ export default function MapCanvas(props: Props) {
     fitted.current = { id: focus.id, w: size.w, h: size.h };
   }, [focus, size, bounds, insets, setView, animateTo]);
 
-  useEffect(() => () => cancelAnimationFrame(anim.current), []);
+  // a tap's room pick, waiting to see whether it's the first half of a double-click
+  const pendingPick = useRef(0);
+  const cancelPick = () => {
+    clearTimeout(pendingPick.current);
+    pendingPick.current = 0;
+  };
+
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(anim.current);
+      clearTimeout(pendingPick.current);
+    },
+    [],
+  );
 
   // ------------------------------------------------------------------------- input
   const zoomBy = useCallback(
@@ -186,6 +201,8 @@ export default function MapCanvas(props: Props) {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     if ((e.target as Element).closest('[data-map-control]')) return;
     cancelAnimationFrame(anim.current);
+    // pressing again right after a tap: a double-click (it zooms), not a pick
+    cancelPick();
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     const p = local(e);
     ptrs.current.set(e.pointerId, p);
@@ -229,7 +246,12 @@ export default function MapCanvas(props: Props) {
     if (!v) return;
     const [x, z] = fromMap(o, (p.x - v.tx) / v.k, (p.y - v.ty) / v.k);
     const r = roomAt(rooms, level, x, z);
-    if (r || !route) onPickRoom(r);
+    if (!r && route) return;
+    cancelPick();
+    pendingPick.current = window.setTimeout(() => {
+      pendingPick.current = 0;
+      onPickRoom(r);
+    }, DOUBLE_MS);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -314,6 +336,7 @@ export default function MapCanvas(props: Props) {
       onPointerCancel={onPointerUp}
       onKeyDown={onKeyDown}
       onDoubleClick={(e) => {
+        cancelPick();
         const p = local(e);
         zoomBy(2, p.x, p.y);
       }}
@@ -338,7 +361,8 @@ export default function MapCanvas(props: Props) {
                   d && lv !== level ? <path key={'o' + lv} className="mp-route-other" d={d} /> : null,
                 )}
               {routeGeo?.paths[level] && (
-                <g className="mp-route">
+                // keyed by floor, so the flow animation plays again on the other floor
+                <g key={level} className="mp-route">
                   <path className="mp-route-casing" d={routeGeo.paths[level]} />
                   <path className="mp-route-line" d={routeGeo.paths[level]} />
                   <path className="mp-route-flow" d={routeGeo.paths[level]} />

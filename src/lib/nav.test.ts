@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { MapRoomRaw, SchoolMapData } from '../types';
-import { createNavGrid, decodeGrid, entrancePoint, NavGrid, routeBetween, routeFromEntrance, solveRoute, spawnPoint, type NavSource } from './nav';
+import { createNavGrid, decodeGrid, entrancePoint, inRect, NavGrid, roomTarget, routeBetween, routeFromEntrance, solveRoute, spawnPoint, type NavRoute, type NavSource } from './nav';
 
 // ---------------------------------------------------------------------------------------------
 // Small hand-made grids: '#' blocked, '.' free; rows are z (k), columns are x (i); 0.5 m cells.
@@ -135,6 +135,18 @@ const schools = { hsn: load('hsn'), cms: load('cms') };
 const grids = { hsn: createNavGrid(schools.hsn), cms: createNavGrid(schools.cms) };
 const byLabel = (data: SchoolMapData, label: string) => data.rooms.find((r) => r.label === label || r.name === label)!;
 
+/** meters of a route's ground-floor walk outside the building's footprint */
+function outdoors(data: SchoolMapData, route: NavRoute): number {
+  let m = 0;
+  for (let i = 1; i < route.points.length; i++) {
+    const a = route.points[i - 1], b = route.points[i];
+    if (a.level || b.level) continue;
+    const x = (a.x + b.x) / 2, z = (a.z + b.z) / 2;
+    if (!data.blocks.some((r) => inRect(r, x, z, 0.3))) m += Math.hypot(b.x - a.x, b.z - a.z);
+  }
+  return m;
+}
+
 describe.each(['hsn', 'cms'] as const)('%s map', (id) => {
   const data = schools[id];
   const g = grids[id];
@@ -146,8 +158,9 @@ describe.each(['hsn', 'cms'] as const)('%s map', (id) => {
     for (const r of rooms) {
       const route = routeFromEntrance(g, data, r);
       expect(route, `${r.label || r.name} on floor ${r.level + 1}`).not.toBeNull();
+      // never shorter than the game's walk (the shortest), and only much longer to stay inside where the game cuts across outdoors
       const ratio = route!.length / r.fromEntrance!;
-      if (Math.abs(ratio - 1) > 0.15) off.push(`${r.label || r.name}: ${route!.length.toFixed(0)} m vs ${r.fromEntrance} m`);
+      if (ratio < 0.97 || ratio > (outdoors(data, route!) < 15 ? 1.3 : 1.15)) off.push(`${r.label || r.name}: ${route!.length.toFixed(0)} m vs ${r.fromEntrance} m`);
       // starts outside the main entrance, ends at the room's door
       expect(route!.points[0].level).toBe(0);
       expect(route!.points.at(-1)!.level).toBe(r.level);
@@ -155,6 +168,20 @@ describe.each(['hsn', 'cms'] as const)('%s map', (id) => {
     const ms = performance.now() - t;
     expect(off).toEqual([]);
     expect(ms).toBeLessThan(3000);
+  });
+
+  it('reaches every room without leaving the building from just inside the front entrance', () => {
+    // only the footprint is walkable: no detours around the outside, no courtyards
+    const indoor = new NavGrid(data, { outdoorMargin: 0.3 });
+    for (let c = 0; c < indoor.N; c++) {
+      const [x, z] = indoor.center(c);
+      if (data.courtyards.some((r) => inRect(r, x, z))) indoor.blocked[c] = 1;
+    }
+    const main = data.entrances.findIndex((e) => e.main);
+    const start = entrancePoint(indoor, { ...data, entrances: data.entrances.map((e) => ({ ...e, main: false })) }, main)!;
+    expect(indoor.isFree(0, start.x, start.z)).toBe(true);
+    const outside = rooms.filter((r) => !indoor.find(start, roomTarget(r), r.R)).map((r) => `${r.label || r.name} on floor ${r.level + 1}`);
+    expect(outside).toEqual([]);
   });
 
   it('matches the 3D game closely without the app tweaks (a faithful port of nav.js)', () => {

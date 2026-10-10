@@ -333,6 +333,7 @@ function SchoolMap({ schoolId }: { schoolId: SchoolId }) {
                 onClear={() => update({ from: null })}
                 onClose={() => update({ to: null, from: null })}
                 onStep={onStep}
+                onSearchFocus={() => setSheetOpen(true)}
               />
             )}
             {data && !selected && (

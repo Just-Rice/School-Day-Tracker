@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { MapRoom, SchoolMapData } from '../types';
 import { buildDirections, formatDistance, spokenName, toMap, turnAngle, walkingMinutes, withThe, type MapOrientation } from './directions';
 import { buildRooms } from './mapData';
-import { createNavGrid, routeBetween, routeFromEntrance, type NavRoute } from './nav';
+import { createNavGrid, roomTarget, routeBetween, routeFromEntrance, solveRoute, type NavRoute } from './nav';
 
 describe('formatting', () => {
   it('rounds distances to 10 m (5 m when short) with feet', () => {
@@ -194,8 +194,11 @@ describe('buildDirections on the real maps', () => {
   });
 
   it('says so when a route goes outside', () => {
-    const texts = fromEntrance(cms, '801').steps.map((s) => s.text);
-    expect(texts[0]).toBe('Start outside the Front entrance');
+    // from the Annex Exit, the 700s are quicker around the outside of the building
+    const to = cms.rooms.find((r) => r.key === '712')!;
+    const rt = solveRoute(cms.grid, cms.data, { from: { entrance: cms.data.entrances.findIndex((e) => e.name === 'Annex Exit') }, to: roomTarget(to), toRect: to.R })!;
+    const texts = buildDirections(rt, cms.data, cms.rooms, { fromLabel: 'Annex Exit', toRoom: to, orientation: cms.o }).steps.map((s) => s.text);
+    expect(texts[0]).toBe('Start outside the Annex Exit');
     expect(texts.some((t) => /back inside/.test(t))).toBe(true);
   });
 

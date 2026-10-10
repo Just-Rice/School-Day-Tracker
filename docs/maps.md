@@ -75,6 +75,8 @@ Instead of steps 2–3 you can install both into this repo without saving them: 
 
 Expect output like `hsn: 164 rooms (154 routed), grid 516x400 @ 0.5 m, 5 stairs -> .../public/schools/hsn/map.json`. The game renders with software WebGL, so building the school can take a few minutes. The rooms that aren't "routed" should be just the stairwells (routes go through them, not to them); any other room missing from the count has no door the game can reach, and routes to it end at its middle. A third argument writes somewhere else instead: `node tools/extract-school-map.mjs ../hsn-3d hsn /tmp/hsn-map.json`.
 
+> **CMS: one fix isn't in cms-3d yet.** The committed `public/schools/cms/map.json` was exported with room 611 corrected in `cms-3d/src/layout.js` (line 124: `R('611', [745, 600, 840, 667], ...)` instead of `[745, 582, 840, 667]`). On the floor plan 611 has a cut-off corner; the full rectangle pokes into the junction of the 500s, 400s and 600s hallways and closes it, so without the fix only 55 of 209 CMS rooms can be reached indoors and directions send students around the outside of the building (Room 408: 367 m instead of 136 m). Make that one-line change in cms-3d (or in your clone) before re-exporting; the test "reaches every room without leaving the building" fails if it's missing.
+
 Then check the result before committing:
 
 1. **Room keys** (next section): make sure no key that students may have saved disappeared.
