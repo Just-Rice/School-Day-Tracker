@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { useAppearance } from '../components/Layout';
-import { Button, Card, Field, Spinner } from '../components/ui';
+import { Button, Card, Field, Spinner, canGoBack } from '../components/ui';
 import AuthShell from '../components/account/AuthShell';
 import GoogleButton from '../components/account/GoogleButton';
 import SchoolPicker from '../components/account/SchoolPicker';
@@ -18,11 +18,43 @@ import './account.css';
 
 const LOGIN_STATE = { from: '/welcome' };
 
+// A link the app was opened with before onboarding (Layout passes it as state.from, e.g. a shared
+// #/map?to=214), opened once it's done. Kept in sessionStorage like the draft, so a trip to /login
+// or a Google redirect doesn't lose it.
+const LINK_KEY = 'sdt:v1:onboarding-link';
+const isDeepLink = (p: unknown): p is string => typeof p === 'string' && p.startsWith('/') && p !== '/' && !/^\/(welcome|login)\b/.test(p);
+
+function openedLink(state: unknown): string | null {
+  const from = (state as { from?: unknown } | null)?.from;
+  // Only the page the app was opened at: with history before it, `from` is where the app was
+  // when the profile went away (Settings, after deleting all data), not a link to come back to.
+  const link = isDeepLink(from) && !canGoBack() ? from : null;
+  try {
+    // this visit's link replaces an earlier one; no state means back from /login
+    if (link) sessionStorage.setItem(LINK_KEY, link);
+    else if (typeof from === 'string') sessionStorage.removeItem(LINK_KEY);
+    const saved = sessionStorage.getItem(LINK_KEY);
+    return isDeepLink(saved) ? saved : null;
+  } catch {
+    return link;
+  }
+}
+
+function forgetLink() {
+  try {
+    sessionStorage.removeItem(LINK_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export default function OnboardingPage() {
   useAppearance();
   const { user, loading: authLoading, firebaseEnabled, signInWithGoogle, redirectError } = useAuth();
   const { store, profile, classes, assignments, loading, saveProfile } = useData();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [link] = useState(() => openedLink(location.state));
   // someone who set the app up without an account and then signed in starts from those choices
   const [draft, setDraft] = useState<OnboardingDraft>(() => loadDraft() ?? draftFromProfile(localStore.snapshot().profile) ?? { step: 1, schoolId: 'hsn', displayName: '' });
   const local = useLocalCounts();
@@ -52,7 +84,9 @@ export default function OnboardingPage() {
   // not while an error is up: saving the profile can work and copying this device's data then fail
   const alreadyDone = !authLoading && !loading && profile.onboarded && !finishing && !error;
   useEffect(() => {
-    if (alreadyDone) clearDraft();
+    if (!alreadyDone) return;
+    clearDraft();
+    forgetLink();
   }, [alreadyDone]);
 
   if (authLoading || (loading && !finishing)) {
@@ -63,7 +97,7 @@ export default function OnboardingPage() {
     );
   }
   // set up already (e.g. they signed in to an account that has a profile): straight to the app
-  if (alreadyDone) return <Navigate to="/" replace />;
+  if (alreadyDone) return <Navigate to={link ?? '/'} replace />;
 
   const school = SCHOOLS[draft.schoolId];
   const hasAccountStep = firebaseEnabled && (!user || draft.step === 3);
@@ -74,6 +108,8 @@ export default function OnboardingPage() {
   const canCopy = !!user && store.kind === 'firestore' && localItems > 0;
   const willCopy = canCopy && copyLocal;
   const hasClasses = classes.length > 0 || (willCopy && local.classes > 0);
+  // a link they opened goes first; classes can be added from there any time
+  const addClassNext = !hasClasses && !link;
   // a Google sign-in that failed after a redirect comes back to the account step
   const shownError = error ?? (!user && draft.step === 3 ? redirectError : null);
 
@@ -92,7 +128,8 @@ export default function OnboardingPage() {
       // they said no here, so don't ask again with the banner
       else if (user && canCopy) dismissDeviceCopy(user.uid);
       clearDraft();
-      navigate(hasClasses ? '/' : '/classes/new', { replace: true, state: { welcome: true } });
+      forgetLink();
+      navigate(link ?? (addClassNext ? '/classes/new' : '/'), { replace: true, state: { welcome: true } });
     } catch (e) {
       setFinishing(false);
       setError((e as Error).message || 'Could not save your choices. Try again.');
@@ -111,7 +148,7 @@ export default function OnboardingPage() {
     }
   };
 
-  const finishLabel = finishing ? 'Saving…' : hasClasses ? 'Finish' : 'Next: add your classes';
+  const finishLabel = finishing ? 'Saving…' : addClassNext ? 'Next: add your classes' : 'Finish';
   const copyOption = canCopy && (
     <label className="acct-copy small">
       <input type="checkbox" checked={copyLocal} onChange={(e) => setCopyLocal(e.target.checked)} disabled={finishing} />
@@ -123,7 +160,7 @@ export default function OnboardingPage() {
   const nextNote = (
     <>
       {copyOption}
-      {!hasClasses && <p className="muted small acct-next-note">Next you’ll add your first class: its name, period, room and teacher. Each one takes about a minute.</p>}
+      {addClassNext && <p className="muted small acct-next-note">Next you’ll add your first class: its name, period, room and teacher. Each one takes about a minute.</p>}
     </>
   );
 

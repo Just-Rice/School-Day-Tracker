@@ -39,6 +39,28 @@ jobs:
       - name: Build
         run: npm run build
 
+      # The service worker must precache the bell schedules (the first visit fetches its school's
+      # before the worker is running, so it would never be cached otherwise) but not the ~400 KB
+      # maps, and the manifest id must be the app's own path ('.' claims the whole github.io site).
+      - name: Check the service worker and manifest
+        run: |
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          const fail = (msg) => {
+            console.error(msg);
+            process.exit(1);
+          };
+          const precached = [...fs.readFileSync('dist/sw.js', 'utf8').matchAll(/"?url"?:\s*"([^"]+)"/g)].map((m) => m[1]);
+          for (const id of fs.readdirSync('public/schools')) {
+            if (!precached.includes(`schools/${id}/schedule.json`)) fail(`dist/sw.js doesn't precache schools/${id}/schedule.json`);
+          }
+          if (precached.some((u) => u.endsWith('/map.json'))) fail('dist/sw.js precaches a map; the maps are cached at runtime');
+          const { id } = JSON.parse(fs.readFileSync('dist/manifest.webmanifest', 'utf8'));
+          const base = process.env.BASE_PATH || '/';
+          if (id !== base) fail(`the manifest id is ${JSON.stringify(id)}, not the base path ${base}`);
+          console.log(`dist/sw.js precaches ${precached.length} files, the schedules included; manifest id ${id}`);
+          EOF
+
       - name: Validate school schedules
         run: |
           if [ -f tools/validate-schedules.mjs ]; then

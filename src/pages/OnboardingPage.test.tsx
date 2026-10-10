@@ -1,6 +1,6 @@
 // The welcome flow's error paths, against a fake account store and a stubbed useAuth.
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, type InitialEntry } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthState } from '../auth/AuthProvider';
 
@@ -43,14 +43,20 @@ import OnboardingPage from './OnboardingPage';
 
 const ANA = { uid: 'u1', email: 'ana@example.com', displayName: 'Ana', photoURL: null };
 
-function mount() {
+function MapPage() {
+  return <p>MAP PAGE {useLocation().search}</p>;
+}
+
+function mount(entry: InitialEntry = '/welcome') {
   return render(
     <DataProvider>
-      <MemoryRouter initialEntries={['/welcome']}>
+      <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route path="/welcome" element={<OnboardingPage />} />
           <Route path="/" element={<p>TODAY PAGE</p>} />
           <Route path="/classes/new" element={<p>NEW CLASS PAGE</p>} />
+          <Route path="/map" element={<MapPage />} />
+          <Route path="/settings" element={<p>SETTINGS PAGE</p>} />
         </Routes>
       </MemoryRouter>
     </DataProvider>,
@@ -66,6 +72,7 @@ beforeEach(() => {
 afterEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+  window.history.replaceState(null, '');
 });
 
 describe('OnboardingPage', () => {
@@ -93,5 +100,30 @@ describe('OnboardingPage', () => {
     // not on the other steps
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('opens the link the app was opened with once onboarding is done', async () => {
+    // Layout sends a new student here from #/map?from=entrance&to=214
+    mount({ pathname: '/welcome', state: { from: '/map?from=entrance&to=214' } });
+    expect(screen.queryByText(/Next you’ll add your first class/)).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Finish' })));
+    expect(screen.getByText('MAP PAGE ?from=entrance&to=214')).toBeInTheDocument();
+  });
+
+  it('keeps that link through a trip to the sign-in page', async () => {
+    const first = mount({ pathname: '/welcome', state: { from: '/map?to=214' } });
+    first.unmount();
+    // back from /login, which returns here without the state
+    mount('/welcome');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Finish' })));
+    expect(screen.getByText('MAP PAGE ?to=214')).toBeInTheDocument();
+  });
+
+  it('still goes on to add a class when the app sent them here from one of its pages', async () => {
+    // all data deleted on Settings, a few pages into the visit
+    window.history.replaceState({ idx: 4 }, '');
+    mount({ pathname: '/welcome', state: { from: '/settings' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Next: add your classes' })));
+    expect(screen.getByText('NEW CLASS PAGE')).toBeInTheDocument();
   });
 });

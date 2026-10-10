@@ -61,10 +61,10 @@ export default function ClassEditPage() {
         </Card>
       </Page>
     );
-  return <Editor key={id ?? 'new'} existing={existing} leaving={leaving} onLeaving={() => setLeaving(true)} />;
+  return <Editor key={id ?? 'new'} existing={existing} leaving={leaving} onLeaving={setLeaving} />;
 }
 
-function Editor({ existing, leaving, onLeaving }: { existing?: ClassInfo; leaving: boolean; onLeaving: () => void }) {
+function Editor({ existing, leaving, onLeaving }: { existing?: ClassInfo; leaving: boolean; onLeaving: (leaving: boolean) => void }) {
   const { classes } = useData();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -98,8 +98,12 @@ function Editor({ existing, leaving, onLeaving }: { existing?: ClassInfo; leavin
         <DeleteClassDialog
           cls={existing}
           open={deleting}
-          onClose={() => setDeleting(false)}
-          onDeleting={onLeaving}
+          onClose={() => {
+            setDeleting(false);
+            // only reachable when the delete failed or never started: the class and its edits stay
+            onLeaving(false);
+          }}
+          onDeleting={() => onLeaving(true)}
           onDeleted={() => navigate('/classes', { replace: true })}
         />
       )}

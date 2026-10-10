@@ -165,6 +165,22 @@ describe('ClassEditPage: unsaved changes', () => {
     expect(router.state.location.pathname).toBe('/classes');
   });
 
+  it('still asks after a delete that failed', async () => {
+    const router = mount(['/classes', '/classes/chem1/edit']);
+    type('Office hours / extra help', 'Tue after school');
+    fake.api.deleteClass.mockRejectedValueOnce(new Error('Could not reach the server.'));
+    await click('Delete');
+    await act(async () => fireEvent.click(inDialog('Delete class')));
+    expect(within(document.querySelector<HTMLElement>('dialog[open]')!).getByRole('alert')).toHaveTextContent('Could not reach the server.');
+    await act(async () => fireEvent.click(inDialog('Cancel')));
+    expect(openDialog()).toBeNull();
+
+    await act(() => router.navigate('/homework'));
+    expect(router.state.location.pathname).toBe('/classes/chem1/edit');
+    expect(openDialog()).toBe('Discard changes?');
+    expect(screen.getByLabelText('Office hours / extra help')).toHaveValue('Tue after school');
+  });
+
   it('"Discard" after Cancel leaves without asking a second time', async () => {
     const router = mount(['/classes/chem1', '/classes/chem1/edit']);
     type('Office hours / extra help', 'Tue after school');
