@@ -23,7 +23,7 @@ All shared types are in [`src/types.ts`](../src/types.ts). Two kinds of data:
 **The user's own data**, stored per user:
 
 - `Profile`: school (`'hsn' | 'cms' | 'other'`), grade, theme, 12/24-hour clock, per-date `dayOverrides` (snow days, "today is a C day"), an optional `customSchedule`, and whether onboarding is done.
-- `ClassInfo`: one class with everything about it: periods, cycle days, room (`room.mapKey` links it to a map room), alternate rooms on some days, teacher, term, color/icon, links, materials, grading policy, grade, notes and free-form `customFields`.
+- `ClassInfo`: one class with everything about it: periods, cycle days, room (`room.mapKey` links it to a map room, on the map of `room.mapSchool`), alternate rooms on some days, teacher, term, color/icon, links, materials, grading policy, grade, notes and free-form `customFields`.
 - `Assignment`: homework, tests, projects... with `classId` (or `null`), due date/time, priority, status, subtasks and links.
 
 **School data**, static JSON shipped with the app under `public/schools/<id>/`:
@@ -105,7 +105,7 @@ hsn-3d / cms-3d repos ──tools/extract-school-map.mjs──▶ public/schools
 ```
 
 - The 3D models already contain each school's rooms, walls, stairwells and a navigation grid. The extractor loads a model in headless Chromium and dumps that data, so the 2-D map and the 3D game always agree. Details and how to re-run it: [maps.md](maps.md).
-- [`lib/mapData.ts`](../src/lib/mapData.ts) gives every room a stable `key`, which is what `ClassInfo.room.mapKey` stores, and powers room search.
+- [`lib/mapData.ts`](../src/lib/mapData.ts) gives every room a stable `key`, which is what `ClassInfo.room.mapKey` stores, and powers room search. HSN and CMS share keys like `214` and `Gym` for different rooms, so pages read a class's link through `roomMapKey(room, schoolId)`, which ignores links picked on another school's map.
 - [`lib/nav.ts`](../src/lib/nav.ts) is a TypeScript port of the games' `nav.js`: A* on 0.5 m cells, 8-connected without cutting corners, blocked across steep level-0 height changes, with each stairwell as a portal between floor 1 and floor 2. On top of nav.js it charges extra for walking outdoors (routes stay inside when there's an indoor way), precomputes distances from the front entrance as an A* landmark, and straightens the grid's zigzags.
 - Building a school's grid takes a few hundred milliseconds, so it runs in a Web Worker (`navWorker.ts`), with a main-thread fallback where workers aren't available.
 - [`lib/directions.ts`](../src/lib/directions.ts) cleans the route polyline into straight runs and turns each corner into a step, named after the hallway zone it turns into or a landmark room, with left/right computed in the map's orientation (HSN is drawn north-up, CMS in its floor plan's orientation; see `SchoolMeta.mapOrientation` in `src/schools/index.ts`).

@@ -10,7 +10,7 @@ import { errorText, settleSoon } from '../components/classes/saving';
 import { useData } from '../data/DataProvider';
 import { useNow, useSchedule } from '../hooks/useSchedule';
 import { formatDate, formatTime, minutesNow, relativeDay, todayISO } from '../lib/dates';
-import { useSchoolMap, type SchoolMapState } from '../lib/mapData';
+import { roomMapElsewhere, roomMapKey, useSchoolMap, type SchoolMapState } from '../lib/mapData';
 import {
   LEVEL_COLORS,
   TERM_LABELS,
@@ -64,19 +64,22 @@ export default function ClassDetailPage() {
         </Card>
       </Page>
     );
-  return <ClassDetail key={cls.id} cls={withClassDefaults(cls)} onLeaving={() => setLeaving(true)} />;
+  return <ClassDetail key={cls.id} cls={withClassDefaults(cls)} onLeaving={setLeaving} />;
 }
 
 /** A room, linked to the map (show it / walk there) when it's on the school's map. */
 function RoomInfo({ room, schoolId, map }: { room: ClassRoom; schoolId: SchoolId; map: SchoolMapState }) {
   const school = SCHOOLS[schoolId];
+  // picked on another school's map: its key or label may name a different room on this one
+  const elsewhere = roomMapElsewhere(room, schoolId);
   let mapRoom: MapRoom | undefined;
   let key: string | undefined;
   if (school.hasMap) {
-    mapRoom = room.mapKey ? map.byKey.get(room.mapKey) : undefined;
+    const linked = roomMapKey(room, schoolId);
+    mapRoom = linked ? map.byKey.get(linked) : undefined;
     // rooms typed before the map loaded, or keys that no longer exist, by their label
-    if (!mapRoom && !map.loading) mapRoom = matchMapRoom(map.rooms, room.label);
-    key = mapRoom?.key ?? (map.loading ? room.mapKey : undefined);
+    if (!mapRoom && !map.loading && !elsewhere) mapRoom = matchMapRoom(map.rooms, room.label);
+    key = mapRoom?.key ?? (map.loading ? linked : undefined);
   }
   return (
     <div className="room-info">
@@ -95,7 +98,8 @@ function RoomInfo({ room, schoolId, map }: { room: ClassRoom; schoolId: SchoolId
           </Link>
         </div>
       ) : (
-        school.hasMap && !map.loading && <div className="muted small">Not on the {school.short} map.</div>
+        school.hasMap &&
+        !map.loading && <div className="muted small">{elsewhere ? `Linked to a room on the ${SCHOOLS[elsewhere].short} map, not the ${school.short} one. Edit the class to pick it again.` : `Not on the ${school.short} map.`}</div>
       )}
     </div>
   );
@@ -115,7 +119,7 @@ function ExtLink({ href, children }: { href: string | undefined; children: React
   );
 }
 
-function ClassDetail({ cls, onLeaving }: { cls: ClassInfo; onLeaving: () => void }) {
+function ClassDetail({ cls, onLeaving }: { cls: ClassInfo; onLeaving: (leaving: boolean) => void }) {
   const { profile, assignments, saveClass } = useData();
   const { schedule, loading: scheduleLoading, error: scheduleError, getDay } = useSchedule();
   const map = useSchoolMap(profile.schoolId);
@@ -132,7 +136,10 @@ function ClassDetail({ cls, onLeaving }: { cls: ClassInfo; onLeaving: () => void
   const hw = classAssignments(assignments, cls.id);
   const t = cls.teacher;
   const hasTeacher = !!(t.name || t.email || t.phone || t.website || t.office || t.officeHours);
-  const officeRoom = t.office && SCHOOLS[schoolId].hasMap ? matchMapRoom(map.rooms, t.office) : undefined;
+  // a class whose rooms were picked on another school's map is that school's, and so is its
+  // teacher's office: '214' typed there isn't this school's Room 214
+  const otherSchool = [cls.room, ...(cls.altRooms ?? []).map((a) => a.room)].some((r) => roomMapElsewhere(r, schoolId));
+  const officeRoom = t.office && SCHOOLS[schoolId].hasMap && !otherSchool ? matchMapRoom(map.rooms, t.office) : undefined;
   const hasCourse = !!(cls.grade || cls.materials || cls.gradingPolicy);
   const editState: ClassNavState = { fromDetail: cls.id };
 
@@ -454,7 +461,17 @@ function ClassDetail({ cls, onLeaving }: { cls: ClassInfo; onLeaving: () => void
         </span>
       </div>
 
-      <DeleteClassDialog cls={cls} open={deleting} onClose={() => setDeleting(false)} onDeleting={onLeaving} onDeleted={() => navigate('/classes', { replace: true })} />
+      <DeleteClassDialog
+        cls={cls}
+        open={deleting}
+        onClose={() => {
+          setDeleting(false);
+          // only reachable when the delete failed or never started: the page follows the class again
+          onLeaving(false);
+        }}
+        onDeleting={() => onLeaving(true)}
+        onDeleted={() => navigate('/classes', { replace: true })}
+      />
     </Page>
   );
 }

@@ -9,7 +9,6 @@ import { useData } from '../data/DataProvider';
 import { classesOnDay, useNow, useSchedule } from '../hooks/useSchedule';
 import { formatDate, minutesNow, relativeDay, todayISO } from '../lib/dates';
 import { currentAndNext, nextSchoolDay } from '../lib/schedule';
-import { SCHOOLS } from '../schools';
 import './schedule.css';
 
 export default function TodayPage() {
@@ -44,7 +43,7 @@ export default function TodayPage() {
       ) : (
         <div className="today-grid">
           <div className="today-main">
-            <NowCard day={day} meetings={meetings} schedule={schedule} today={today} minutes={minutes} clock={clock} hasMap={SCHOOLS[profile.schoolId].hasMap} upcoming={upcoming} />
+            <NowCard day={day} meetings={meetings} schedule={schedule} today={today} minutes={minutes} clock={clock} schoolId={profile.schoolId} upcoming={upcoming} />
             {!hasClasses && (
               <Card>
                 <EmptyState

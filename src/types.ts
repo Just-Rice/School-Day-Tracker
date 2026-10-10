@@ -136,6 +136,12 @@ export interface Teacher {
 export interface ClassRoom {
   /** room key in the school map (see MapRoom.key), when the school has a map */
   mapKey?: string;
+  /**
+   * the school whose map mapKey refers to (the same key can name different rooms at HSN and CMS).
+   * Links saved before this field existed have none and count as the profile's current school;
+   * read the key through roomMapKey() in lib/mapData.
+   */
+  mapSchool?: SchoolId;
   /** what the user calls it: '214', 'A104', 'Gym' */
   label: string;
   /** free text for schools without a map: building, wing, floor */

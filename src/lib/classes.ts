@@ -265,7 +265,10 @@ const uniq = (xs: string[]) => [...new Set(xs.map((x) => x.trim()).filter(Boolea
 export function cleanRoom(r: ClassRoom | undefined): ClassRoom {
   const label = r?.label?.trim() ?? '';
   const out: ClassRoom = { label };
-  if (label && r?.mapKey) out.mapKey = r.mapKey;
+  if (label && r?.mapKey) {
+    out.mapKey = r.mapKey;
+    if (r.mapSchool) out.mapSchool = r.mapSchool;
+  }
   const where = opt(r?.where);
   if (where) out.where = where;
   return out;

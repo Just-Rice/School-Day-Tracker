@@ -7,7 +7,7 @@ import type { MapRoom, SchoolId } from '../types';
 import { Card, Chip, Dot, EmptyState, Page, Spinner } from '../components/ui';
 import { useData } from '../data/DataProvider';
 import { SCHOOLS } from '../schools';
-import { useSchoolMap } from '../lib/mapData';
+import { roomMapKey, useSchoolMap } from '../lib/mapData';
 import { buildDirections, toMap, type DirectionStep } from '../lib/directions';
 import MapCanvas, { type Highlight, type MapFocus } from '../components/map/MapCanvas';
 import RoomPanel, { type FromOption } from '../components/map/RoomPanel';
@@ -128,11 +128,12 @@ function SchoolMap({ schoolId }: { schoolId: SchoolId }) {
     const byRoom = new Map<string, { name: string; color: string }[]>();
     for (const c of classes) {
       if (c.archived) continue;
-      const keys = new Set([c.room?.mapKey, ...(c.altRooms ?? []).map((a) => a.room.mapKey)]);
+      // rooms picked on another school's map aren't on this one (even when a key like '214' is)
+      const keys = new Set([c.room, ...(c.altRooms ?? []).map((a) => a.room)].map((r) => roomMapKey(r, schoolId)));
       for (const k of keys) if (k && byKey.has(k)) byRoom.set(k, [...(byRoom.get(k) ?? []), { name: c.name, color: c.color }]);
     }
     return byRoom;
-  }, [classes, byKey]);
+  }, [classes, byKey, schoolId]);
   const classNames = useMemo(() => new Map([...mine].map(([k, cs]) => [k, cs.map((c) => c.name)])), [mine]);
   const [showMine, setShowMine] = useState(readPref);
   const highlights = useMemo<Highlight[]>(() => (showMine ? [...mine].map(([key, cs]) => ({ key, color: cs[0].color, name: cs.map((c) => c.name).join(' / ') })) : []), [mine, showMine]);
@@ -145,11 +146,12 @@ function SchoolMap({ schoolId }: { schoolId: SchoolId }) {
   const classOptions = useMemo<FromOption[]>(() => {
     const out: FromOption[] = [];
     for (const c of classes) {
-      const r = !c.archived && c.room?.mapKey ? byKey.get(c.room.mapKey) : undefined;
+      const key = c.archived ? undefined : roomMapKey(c.room, schoolId);
+      const r = key ? byKey.get(key) : undefined;
       if (r && r.key !== selected?.key && !out.some((x) => x.value === r.key)) out.push({ value: r.key, label: `${c.name} (${r.title})` });
     }
     return out;
-  }, [classes, byKey, selected]);
+  }, [classes, byKey, selected, schoolId]);
 
   const places = useMemo(() => {
     const seen = new Set<string>();

@@ -2,29 +2,31 @@ import { useState, type FormEvent } from 'react';
 import type { SchoolId } from '../../types';
 import { useData } from '../../data/DataProvider';
 import { activeCustomSchedule } from '../../hooks/useSchedule';
+import { roomMapKey, stampMapSchool } from '../../lib/mapData';
 import { SCHOOLS } from '../../schools';
 import { Button, Card, Field, Modal } from '../ui';
 import SchoolPicker from './SchoolPicker';
 import { gradeFor, gradeLabel, gradeOptions } from './grades';
 
 export default function ProfileCard() {
-  const { profile, classes, saveProfile } = useData();
+  const { profile, classes, saveProfile, saveClass } = useData();
   const [name, setName] = useState(profile.displayName ?? '');
   const [nameSaved, setNameSaved] = useState(false);
   const [pendingSchool, setPendingSchool] = useState<SchoolId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dirty = name.trim() !== (profile.displayName ?? '');
 
-  const run = async (patch: Parameters<typeof saveProfile>[0]) => {
+  const attempt = async (job: () => Promise<unknown>) => {
     setError(null);
     try {
-      await saveProfile(patch);
+      await job();
       return true;
     } catch (e) {
       setError((e as Error).message || 'Could not save.');
       return false;
     }
   };
+  const run = (patch: Parameters<typeof saveProfile>[0]) => attempt(() => saveProfile(patch));
 
   const saveName = async (e: FormEvent) => {
     e.preventDefault();
@@ -37,6 +39,11 @@ export default function ProfileCard() {
 
   const switchSchool = async (id: SchoolId) => {
     setPendingSchool(null);
+    // room links saved before rooms kept their map's school count as the current school's: mark
+    // them as that before leaving it, so they stay on its map and off the new school's
+    const from = profile.schoolId;
+    const marked = classes.map((c) => stampMapSchool(c, from)).filter((c, i) => c !== classes[i]);
+    if (!(await attempt(() => Promise.all(marked.map((c) => saveClass(c)))))) return;
     await run({ schoolId: id, grade: gradeFor(id, profile.grade) });
   };
 
@@ -47,7 +54,7 @@ export default function ProfileCard() {
     else void switchSchool(id);
   };
 
-  const mappedRooms = classes.filter((c) => c.room?.mapKey).length;
+  const mappedRooms = classes.flatMap((c) => [c.room, ...(c.altRooms ?? []).map((a) => a.room)]).filter((r) => roomMapKey(r, profile.schoolId)).length;
   const custom = activeCustomSchedule(profile);
   const cur = SCHOOLS[profile.schoolId];
   const next = pendingSchool ? SCHOOLS[pendingSchool] : null;

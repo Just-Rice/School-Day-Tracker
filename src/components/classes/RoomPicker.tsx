@@ -1,10 +1,11 @@
 // Room input for a class. Schools with a map get a combobox over the map's rooms (stores the
-// room's key so the map can route to it); anything typed that isn't on the map is kept as text.
+// room's key and the school so the map can route to it); anything typed that isn't on the map is
+// kept as text. A room picked on another school's map shows as text until it's picked again here.
 // Schools without a map get a room label plus a free-text "where" (building, wing, floor).
 import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { ClassRoom, MapRoom, SchoolId } from '../../types';
 import { SCHOOLS } from '../../schools';
-import { searchRooms, useSchoolMap } from '../../lib/mapData';
+import { roomMapElsewhere, roomMapKey, searchRooms, useSchoolMap } from '../../lib/mapData';
 import { matchMapRoom } from '../../lib/classes';
 
 export function floorName(schoolId: SchoolId, level: number): string {
@@ -38,14 +39,17 @@ export default function RoomPicker({
   const [active, setActive] = useState(0);
 
   const results = useMemo(() => (open ? searchRooms(map.rooms, value.label ?? '', 8) : []), [open, map.rooms, value.label]);
-  const linked = value.mapKey ? map.byKey.get(value.mapKey) : undefined;
+  const linkedKey = roomMapKey(value, schoolId);
+  const linked = linkedKey ? map.byKey.get(linkedKey) : undefined;
+  const elsewhere = roomMapElsewhere(value, schoolId);
 
   if (!school.hasMap) {
     return (
       <div className="form-grid room-free">
         <label className="field">
           <span className="field-label">{label}</span>
-          <input id={inputId} value={value.label ?? ''} placeholder={placeholder ?? 'e.g. 214, Gym, Lab B'} aria-invalid={error ? true : undefined} onChange={(e) => onChange({ ...value, label: e.target.value })} />
+          {/* a new label drops any map link (from a school with a map), which named another room */}
+          <input id={inputId} value={value.label ?? ''} placeholder={placeholder ?? 'e.g. 214, Gym, Lab B'} aria-invalid={error ? true : undefined} onChange={(e) => onChange({ label: e.target.value, where: value.where })} />
           {error && <span className="field-hint cls-err">{error}</span>}
         </label>
         <label className="field">
@@ -59,7 +63,7 @@ export default function RoomPicker({
   const listId = `${auto}-list`;
   const showList = open && results.length > 0;
   const pick = (r: MapRoom) => {
-    onChange({ label: r.label || r.name, mapKey: r.key });
+    onChange({ label: r.label || r.name, mapKey: r.key, mapSchool: schoolId });
     setOpen(false);
   };
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -87,6 +91,12 @@ export default function RoomPicker({
         <span aria-hidden>📍</span> On the map: {linked.title} · {floorName(schoolId, linked.level)}
       </span>
     );
+  else if (elsewhere)
+    status = (
+      <span className="field-hint room-status">
+        Linked to a room on the {SCHOOLS[elsewhere].short} map, not this one. Pick it from the list to link it to the {school.short} map.
+      </span>
+    );
   else if (map.loading) status = <span className="field-hint">Loading the map…</span>;
   else if (map.error) status = <span className="field-hint">Couldn’t load the map, so the room is saved as typed.</span>;
   else if (value.label?.trim()) status = <span className="field-hint room-status">Not on the {school.short} map. It’ll be saved as typed.</span>;
@@ -111,7 +121,8 @@ export default function RoomPicker({
           placeholder={placeholder ?? 'e.g. 214, A103, Media Center'}
           onChange={(e) => {
             const text = e.target.value;
-            onChange({ label: text, mapKey: matchMapRoom(map.rooms, text)?.key });
+            const match = matchMapRoom(map.rooms, text);
+            onChange({ label: text, mapKey: match?.key, mapSchool: match ? schoolId : undefined });
             setOpen(true);
             setActive(0);
           }}

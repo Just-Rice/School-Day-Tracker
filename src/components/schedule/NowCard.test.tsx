@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import type { ClassInfo, SchoolSchedule } from '../../types';
+import type { ClassInfo, ClassRoom, SchoolId, SchoolSchedule } from '../../types';
 import { classesOnDay, resolveDay } from '../../lib/schedule';
 import NowCard, { directionsPath } from './NowCard';
 import DayTimeline from './DayTimeline';
@@ -33,12 +33,12 @@ const schedule: SchoolSchedule = {
   calendar: { firstDay: '2026-09-08', lastDay: '2027-06-18', noSchool: [{ date: '2026-10-12', name: 'Columbus Day' }], specialDays: [] },
 };
 
-const cls = (id: string, name: string, period: string, mapKey?: string): ClassInfo => ({
+const cls = (id: string, name: string, period: string, mapKey?: string, mapSchool?: SchoolId): ClassInfo => ({
   id,
   name,
   periods: [period],
   teacher: { name: 'Ms. Lee' },
-  room: { label: mapKey ?? 'Gym', mapKey },
+  room: { label: mapKey ?? 'Gym', mapKey, mapSchool },
   term: 'full',
   color: '#2563eb',
   links: [],
@@ -48,22 +48,36 @@ const cls = (id: string, name: string, period: string, mapKey?: string): ClassIn
 });
 const classes = [cls('m', 'Algebra II', '1', '214'), cls('e', 'English', '3', '108')];
 
-function renderAt(date: string, h: number, m: number, hasMap = true) {
+function renderAt(date: string, h: number, m: number, schoolId: SchoolId = 'hsn', list = classes) {
   const day = resolveDay(schedule, date);
   const next = resolveDay(schedule, '2026-10-09');
   return render(
     <MemoryRouter>
-      <NowCard day={day} meetings={classesOnDay(day, classes)} schedule={schedule} today={date} minutes={h * 60 + m} clock="12h" hasMap={hasMap} upcoming={{ day: next, meetings: classesOnDay(next, classes) }} />
+      <NowCard day={day} meetings={classesOnDay(day, list)} schedule={schedule} today={date} minutes={h * 60 + m} clock="12h" schoolId={schoolId} upcoming={{ day: next, meetings: classesOnDay(next, list) }} />
     </MemoryRouter>,
   );
 }
 
 describe('directionsPath', () => {
+  const room = (mapKey: string, mapSchool?: SchoolId): ClassRoom => ({ label: mapKey, mapKey, mapSchool });
+
   it('builds map links and skips rooms without a map key or where you already are', () => {
-    expect(directionsPath(undefined, { label: '214', mapKey: '214' })).toBe('/map?from=entrance&to=214');
-    expect(directionsPath('108', { label: 'A 1', mapKey: 'A 1' })).toBe('/map?from=108&to=A+1');
-    expect(directionsPath('214', { label: '214', mapKey: '214' })).toBeNull();
-    expect(directionsPath(undefined, { label: 'Gym' })).toBeNull();
+    expect(directionsPath(undefined, room('214'), 'hsn')).toBe('/map?from=entrance&to=214');
+    expect(directionsPath(room('108'), room('A 1'), 'hsn')).toBe('/map?from=108&to=A+1');
+    expect(directionsPath(room('214'), room('214'), 'hsn')).toBeNull();
+    expect(directionsPath(undefined, { label: 'Gym' }, 'hsn')).toBeNull();
+  });
+
+  it("only uses rooms linked to the school's own map", () => {
+    // 214 is a room at both schools: one picked at CMS isn't HSN's 214
+    expect(directionsPath(undefined, room('214', 'cms'), 'hsn')).toBeNull();
+    expect(directionsPath(undefined, room('214', 'cms'), 'cms')).toBe('/map?from=entrance&to=214');
+    expect(directionsPath(room('108', 'cms'), room('214', 'hsn'), 'hsn')).toBe('/map?from=entrance&to=214');
+    expect(directionsPath(room('214', 'cms'), room('214', 'hsn'), 'hsn')).toBe('/map?from=entrance&to=214');
+    expect(directionsPath(room('108', 'hsn'), room('214', 'hsn'), 'hsn')).toBe('/map?from=108&to=214');
+    // links from before rooms kept their school belong to the current one
+    expect(directionsPath(room('108'), room('214'), 'cms')).toBe('/map?from=108&to=214');
+    expect(directionsPath(undefined, room('214', 'hsn'), 'other')).toBeNull();
   });
 });
 
@@ -106,8 +120,18 @@ describe('NowCard', () => {
   });
 
   it('hides directions for schools without a map', () => {
-    renderAt('2026-10-08', 7, 30, false);
+    renderAt('2026-10-08', 7, 30, 'other');
     expect(screen.queryByRole('link', { name: /Directions/ })).toBeNull();
+  });
+
+  it("doesn't send you to a room picked on another school's map", () => {
+    const cmsMath = cls('m', 'Algebra II', '1', '214', 'cms');
+    // the next class's room is CMS's 214, which isn't HSN's 214
+    renderAt('2026-10-08', 7, 30, 'hsn', [cmsMath, cls('e', 'English', '3', '108', 'hsn')]);
+    expect(screen.queryByRole('link', { name: /Directions/ })).toBeNull();
+    // and you aren't in HSN's 214 during it: directions start at the entrance
+    renderAt('2026-10-08', 10, 37, 'hsn', [cmsMath, cls('e', 'English', '3', '108', 'hsn')]);
+    expect(screen.getByRole('link', { name: /from the entrance to Room 108/ })).toHaveAttribute('href', '/map?from=entrance&to=108');
   });
 });
 

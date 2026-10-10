@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ClassInfo, Profile, SchoolMapData } from '../types';
+import type { ClassInfo, ClassRoom, Profile, SchoolMapData } from '../types';
 
 const h = vi.hoisted(() => ({
   profile: { schoolId: 'hsn', theme: 'system', clock: '12h', dayOverrides: {}, onboarded: true } as Profile,
@@ -63,6 +63,66 @@ describe('MapPage on a phone', () => {
     expect(panel).toHaveAttribute('data-open', 'false');
     expect(start).toBeVisible();
     expect(screen.getByRole('combobox', { name: 'Search rooms', hidden: true })).not.toBeVisible();
+  });
+});
+
+describe('MapPage: my classes', () => {
+  const mk = (id: string, name: string, room: ClassRoom, altRooms?: ClassInfo['altRooms']): ClassInfo => ({
+    id,
+    name,
+    teacher: { name: '' },
+    room,
+    altRooms,
+    periods: ['1'],
+    term: 'full',
+    color: '#2f6fdf',
+    links: [],
+    customFields: [],
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  const hsnProfile = h.profile;
+  beforeEach(() => {
+    // 214, 301 and Gym are on both schools' maps, as different rooms
+    h.classes = [
+      mk('a', 'Chemistry', { label: 'A104', mapKey: 'A104', mapSchool: 'hsn' }),
+      mk('b', 'Biology', { label: '214', mapKey: '214' }),
+      mk('c', 'Band', { label: '214', mapKey: '214', mapSchool: 'cms' }),
+      mk('d', 'PE', { label: 'Gym', mapKey: 'Gym', mapSchool: 'cms' }, [{ days: ['A'], room: { label: '301', mapKey: '301', mapSchool: 'cms' } }]),
+    ];
+  });
+  afterEach(() => {
+    h.classes = [];
+    h.profile = hsnProfile;
+  });
+
+  const listed = async (container: HTMLElement) => {
+    await screen.findByRole('heading', { name: 'My classes' });
+    return [...container.querySelectorAll('.mp-quick li')].map((li) => `${li.querySelector('.mp-quick-name')!.textContent} @ ${li.querySelector('.muted')!.textContent}`);
+  };
+
+  it("shows only classes whose rooms were picked on this school's map", async () => {
+    const { container } = renderAt('/map');
+    // Biology's link is from before rooms kept their school, so it counts as the current one's
+    expect(await listed(container)).toEqual(['Chemistry @ Room A104 · 1st floor', 'Biology @ Room 214 · 2nd floor']);
+    expect(screen.queryByText(/\bBand\b|\bPE\b/)).toBeNull();
+  });
+
+  it("offers only this school's class rooms to start from", async () => {
+    renderAt('/map?to=A104');
+    const from = await screen.findByLabelText('From');
+    const options = [...from.querySelectorAll('optgroup[label="My classes"] option')].map((o) => o.textContent);
+    expect(options).toEqual(['Biology (Room 214)']);
+  });
+
+  it('shows the classes picked at CMS on the CMS map', async () => {
+    h.profile = { ...hsnProfile, schoolId: 'cms' };
+    const { container } = renderAt('/map');
+    const rows = await listed(container);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatch(/^Biology \/ Band @ Room 214 · 1st floor/);
+    expect(rows.slice(1).map((r) => r.split(' @ ')[0])).toEqual(['PE', 'PE']);
+    expect(screen.queryByText(/Chemistry/)).toBeNull();
   });
 });
 

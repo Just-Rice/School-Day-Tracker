@@ -87,6 +87,19 @@ describe('planDeviceCopy', () => {
     expect(plan.assignments.map((a) => a.id)).toEqual(['h']);
     expect(plan.profile).toEqual({ dayOverrides: { '2026-11-01': { noSchool: true } } });
   });
+
+  it("keeps this device's room links on its own school's map", () => {
+    const linked = (id: string, room: ClassInfo['room']) => ({ ...cls(id), room });
+    const plan = planDeviceCopy(
+      { profile: profile({ schoolId: 'cms' }), classes: [linked('a', { label: '214', mapKey: '214' }), linked('b', { label: 'Gym', mapKey: 'Gym', mapSchool: 'hsn' })], assignments: [] },
+      { profile: profile({ schoolId: 'hsn' }), classes: [], assignments: [] },
+    );
+    // the account is at HSN: a link from before rooms kept their school is still CMS's 214
+    expect(plan.classes.map((c) => c.room)).toEqual([
+      { label: '214', mapKey: '214', mapSchool: 'cms' },
+      { label: 'Gym', mapKey: 'Gym', mapSchool: 'hsn' },
+    ]);
+  });
 });
 
 describe('countPhrase', () => {

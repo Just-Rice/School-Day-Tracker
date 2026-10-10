@@ -1,7 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import type { BellSlot, ClassRoom, DayInfo, ISODate, SchoolSchedule } from '../../types';
+import type { BellSlot, ClassRoom, DayInfo, ISODate, SchoolId, SchoolSchedule } from '../../types';
 import { formatDuration, formatTime, relativeDay, toMinutes } from '../../lib/dates';
+import { roomMapKey } from '../../lib/mapData';
 import { currentAndNext, formatTimeRange, slotName, slotProgress, type Meeting } from '../../lib/schedule';
 import { Card, Dot } from '../ui';
 import { meetingMeta, meetingTitle, roomText } from './bits';
@@ -19,26 +20,30 @@ interface Props {
   /** minutes after midnight, fractional */
   minutes: number;
   clock: '12h' | '24h';
-  /** the school has an indoor map, so offer directions */
-  hasMap: boolean;
+  /** the student's school: directions are offered to rooms linked to its map */
+  schoolId: SchoolId;
   /** the next school day after today, for after school and days off */
   upcoming?: UpcomingDay;
 }
 
-/** '#/map?from=…&to=…' when the destination is on the map and isn't where you already are */
-export function directionsPath(from: string | undefined, to: ClassRoom | undefined): string | null {
-  if (!to?.mapKey) return null;
-  const f = from || 'entrance';
-  if (f === to.mapKey) return null;
-  return `/map?${new URLSearchParams({ from: f, to: to.mapKey })}`;
+/**
+ * '#/map?from=…&to=…' when the destination is on the school's map and isn't where you already
+ * are; from the entrance when where you are isn't on that map
+ */
+export function directionsPath(from: ClassRoom | undefined, to: ClassRoom | undefined, schoolId: SchoolId): string | null {
+  const t = roomMapKey(to, schoolId);
+  if (!t) return null;
+  const f = roomMapKey(from, schoolId) ?? 'entrance';
+  if (f === t) return null;
+  return `/map?${new URLSearchParams({ from: f, to: t })}`;
 }
 
-function Directions({ hasMap, from, to }: { hasMap: boolean; from?: string; to?: ClassRoom }) {
-  const path = hasMap ? directionsPath(from, to) : null;
+function Directions({ schoolId, from, to }: { schoolId: SchoolId; from?: ClassRoom; to?: ClassRoom }) {
+  const path = directionsPath(from, to, schoolId);
   if (!path) return null;
   return (
     <Link className="btn btn-primary btn-sm" to={path}>
-      <span aria-hidden>⌖</span> Directions{from && from !== 'entrance' ? '' : ' from the entrance'} to {roomText(to)}
+      <span aria-hidden>⌖</span> Directions{roomMapKey(from, schoolId) ? '' : ' from the entrance'} to {roomText(to)}
     </Link>
   );
 }
@@ -99,7 +104,7 @@ function Countdown({ verb, minutes, at, clock }: { verb: string; minutes: number
   );
 }
 
-export default function NowCard({ day, meetings, schedule, today, minutes, clock, hasMap, upcoming }: Props) {
+export default function NowCard({ day, meetings, schedule, today, minutes, clock, schoolId, upcoming }: Props) {
   const st = currentAndNext(day, minutes);
   const bySlot = (s?: BellSlot) => (s ? meetings.find((m) => m.slot === s) : undefined);
   const cur = bySlot(st.current);
@@ -152,7 +157,7 @@ export default function NowCard({ day, meetings, schedule, today, minutes, clock
         </div>
         {nxt ? <NextLine m={nxt} schedule={schedule} clock={clock} minutesUntil={st.minutesUntilNext} /> : <p className="muted small">Last period of the day.</p>}
         <div className="now-actions">
-          <Directions hasMap={hasMap} from={cur?.room?.mapKey} to={nextClass?.room} />
+          <Directions schoolId={schoolId} from={cur?.room} to={nextClass?.room} />
         </div>
       </>
     );
@@ -167,7 +172,7 @@ export default function NowCard({ day, meetings, schedule, today, minutes, clock
           <Countdown verb="Starts" minutes={st.minutesUntilNext ?? 0} at={nxt.slot.start} clock={clock} />
         </div>
         <div className="now-actions">
-          <Directions hasMap={hasMap} from={lastClass?.room?.mapKey} to={nextClass?.room} />
+          <Directions schoolId={schoolId} from={lastClass?.room} to={nextClass?.room} />
         </div>
       </>
     );
@@ -193,7 +198,7 @@ export default function NowCard({ day, meetings, schedule, today, minutes, clock
           )}
         </div>
         <div className="now-actions">
-          <Directions hasMap={hasMap} to={first?.room} />
+          <Directions schoolId={schoolId} to={first?.room} />
         </div>
       </>
     );

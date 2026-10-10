@@ -4,6 +4,7 @@ import type { DataStore } from '../../data/store';
 import { localStore } from '../../data/localStore';
 import { copyLocalDataToAccount } from '../../data/firestoreStore';
 import { changedByMerge, planImport, planProfile, profileMergeFields, type BackupData } from '../../lib/backup';
+import { stampMapSchool } from '../../lib/mapData';
 
 export interface CurrentData {
   profile: Profile;
@@ -41,9 +42,13 @@ export async function applyImport(store: DataStore, current: CurrentData, incomi
 
 /** What copying this device's local data into the signed-in account would write. */
 export function planDeviceCopy(local: ReturnType<typeof localStore.snapshot>, current: CurrentData) {
+  // the account may be at another school: room links from before rooms kept their map's school
+  // are on this device's school's map
+  const from = local.profile?.schoolId;
+  const classes = from ? local.classes.map((c) => stampMapSchool(c, from)) : local.classes;
   return {
     profile: profileMergeFields(local.profile, current.profile),
-    classes: changedByMerge(current.classes, local.classes),
+    classes: changedByMerge(current.classes, classes),
     assignments: changedByMerge(current.assignments, local.assignments),
   };
 }

@@ -243,12 +243,12 @@ describe('prepareClass', () => {
         courseCode: ' ',
         icon: ' 🧪 ',
         teacher: { name: ' Ms. Lee ', email: ' ', website: 'lee.org' },
-        room: { label: ' ', mapKey: 'A103' },
+        room: { label: ' ', mapKey: 'A103', mapSchool: 'hsn' },
         periods: ['3', '3', ' '],
         days: ['C', 'A', 'C'],
         altRooms: [
           { days: [], room: { label: '' } },
-          { days: ['A'], room: { label: ' B210 ', mapKey: 'B210', where: ' ' } },
+          { days: ['A'], room: { label: ' B210 ', mapKey: 'B210', mapSchool: 'hsn', where: ' ' } },
         ],
         links: [
           { label: ' Classroom ', url: 'classroom.google.com' },
@@ -270,7 +270,8 @@ describe('prepareClass', () => {
     expect(out.room).toEqual({ label: '' });
     expect(out.periods).toEqual(['3']);
     expect(out.days).toEqual(['A', 'C']);
-    expect(out.altRooms).toEqual([{ days: ['A'], room: { label: 'B210', mapKey: 'B210' } }]);
+    // a map link keeps the school it was picked at
+    expect(out.altRooms).toEqual([{ days: ['A'], room: { label: 'B210', mapKey: 'B210', mapSchool: 'hsn' } }]);
     expect(out.links).toEqual([{ label: 'Classroom', url: 'https://classroom.google.com' }]);
     expect(out.customFields).toEqual([{ key: 'Locker', value: '1234' }]);
     expect(out.notes).toBeUndefined();

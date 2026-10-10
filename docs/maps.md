@@ -85,7 +85,7 @@ Then check the result before committing:
 
 ## Room keys: keep them stable
 
-When a student picks a classroom from the map, the class stores the room's **key** in `ClassInfo.room.mapKey`, in their account. `buildRooms` in [`src/lib/mapData.ts`](../src/lib/mapData.ts) makes the key from the room itself:
+When a student picks a classroom from the map, the class stores the room's **key** in `ClassInfo.room.mapKey`, and the school in `room.mapSchool` (the two maps share keys like `214` for different rooms), in their account. `buildRooms` in [`src/lib/mapData.ts`](../src/lib/mapData.ts) makes the key from the room itself:
 
 - the `label` when it's unique in the school: `214`, `A104`;
 - otherwise the label, name or type plus the floor, and a counter for repeats: `Restroom@1`, `Storage@1#2`.

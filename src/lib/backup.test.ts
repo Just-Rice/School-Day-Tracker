@@ -211,6 +211,21 @@ describe('parseBackup', () => {
     expect(parsed.warnings).toEqual([]);
   });
 
+  it('keeps the school a room was picked at, and gives older links the school in the file', () => {
+    const linked = cls('a', 5, { room: { label: '214', mapKey: '214', mapSchool: 'cms' }, altRooms: [{ days: ['A'], room: { label: 'Gym', mapKey: 'Gym', mapSchool: 'hsn' } }] });
+    const older = cls('b', 5, { room: { label: '301', mapKey: '301' }, altRooms: [{ days: ['B'], room: { label: 'Gym', mapKey: 'Gym' } }] });
+    const parse = (p: Profile | null, classes: ClassInfo[]) => parseBackup(JSON.stringify(makeBackup({ profile: p, classes, assignments: [] }))).classes;
+    expect(parse(profile(), [linked])).toEqual([linked]);
+    // links saved before rooms kept their school were picked at the school the file is from
+    expect(parse(profile({ schoolId: 'cms' }), [linked, older])).toEqual([
+      linked,
+      { ...older, room: { label: '301', mapKey: '301', mapSchool: 'cms' }, altRooms: [{ days: ['B'], room: { label: 'Gym', mapKey: 'Gym', mapSchool: 'cms' } }] },
+    ]);
+    // no school in the file, or one without a map: left for the profile they're imported into
+    expect(parse(null, [older])).toEqual([older]);
+    expect(parse(profile({ schoolId: 'other' }), [older])).toEqual([older]);
+  });
+
   it('says what it shortened to fit an account, item by item', () => {
     const parsed = parseBackup(
       file({
@@ -250,6 +265,14 @@ describe('sanitizeClass', () => {
 
   it('caps very long text at what an account can store', () => {
     expect(sanitizeClass({ id: 'x', name: 'n'.repeat(1000) })!.name).toHaveLength(CLASS_TEXT.name);
+  });
+
+  it('keeps a room’s map school only with its key, and only for a school with a map', () => {
+    const room = (r: object) => sanitizeClass({ id: 'x', name: 'Bio', room: r })!.room;
+    expect(room({ label: '214', mapKey: '214', mapSchool: 'cms' })).toEqual({ label: '214', mapKey: '214', mapSchool: 'cms' });
+    expect(room({ label: '214', mapKey: '214', mapSchool: 'other' })).toEqual({ label: '214', mapKey: '214' });
+    expect(room({ label: '214', mapKey: '214', mapSchool: 'HSN' })).toEqual({ label: '214', mapKey: '214' });
+    expect(room({ label: '214', mapSchool: 'cms' })).toEqual({ label: '214' });
   });
 });
 

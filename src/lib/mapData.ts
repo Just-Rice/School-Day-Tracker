@@ -2,7 +2,7 @@
 // Keys are what ClassInfo.room.mapKey stores, so they must not change between data exports:
 // a room's label when it's unique ('214', 'A104'), otherwise name/label + floor (+ a counter).
 import { useEffect, useState } from 'react';
-import type { MapRoom, MapRoomRaw, SchoolId, SchoolMapData } from '../types';
+import type { ClassInfo, ClassRoom, MapRoom, MapRoomRaw, SchoolId, SchoolMapData } from '../types';
 import { loadSchoolMap, SCHOOLS } from '../schools';
 
 /** room types people look for by name (not restrooms, closets, ...) */
@@ -11,6 +11,40 @@ export const NAMED_TYPES = new Set(['class', 'lab', 'art', 'music', 'lecture', '
 export function roomTitle(r: MapRoomRaw): string {
   if (r.label && /^[A-Z]?\d/.test(r.label)) return r.name && r.name !== `Room ${r.label}` ? `${r.label} · ${r.name}` : `Room ${r.label}`;
   return r.name || r.label || r.type;
+}
+
+/**
+ * The room's key on schoolId's map, or undefined when the room isn't linked to that map: it was
+ * never picked from a map, it was picked on another school's map (HSN and CMS share keys like
+ * '214' and 'Gym' for different rooms), or the school has no map. Links saved before
+ * ClassRoom.mapSchool existed count as schoolId's. Read room links only through this.
+ */
+export function roomMapKey(room: ClassRoom | undefined, schoolId: SchoolId): string | undefined {
+  if (!room?.mapKey || !SCHOOLS[schoolId].hasMap) return undefined;
+  return !room.mapSchool || room.mapSchool === schoolId ? room.mapKey : undefined;
+}
+
+/** the other school whose map the room was picked on, when it isn't schoolId's */
+export function roomMapElsewhere(room: ClassRoom | undefined, schoolId: SchoolId): SchoolId | undefined {
+  return room?.mapKey && room.mapSchool && room.mapSchool !== schoolId ? room.mapSchool : undefined;
+}
+
+/**
+ * `c` with its room links that have no mapSchool (saved before it existed) marked as schoolId's,
+ * so they stay on that school's map when the class ends up with a profile at another school.
+ * `c` itself when there's nothing to mark, or schoolId has no map.
+ */
+export function stampMapSchool(c: ClassInfo, schoolId: SchoolId): ClassInfo {
+  if (!SCHOOLS[schoolId].hasMap) return c;
+  const stamp = (r: ClassRoom) => (r?.mapKey && !r.mapSchool ? { ...r, mapSchool: schoolId } : r);
+  const room = stamp(c.room);
+  const altRooms = c.altRooms?.map((a) => {
+    const r = stamp(a.room);
+    return r === a.room ? a : { ...a, room: r };
+  });
+  const altChanged = !!altRooms?.some((a, i) => a !== c.altRooms?.[i]);
+  if (room === c.room && !altChanged) return c;
+  return { ...c, room, altRooms: altChanged ? altRooms : c.altRooms };
 }
 
 export function buildRooms(data: SchoolMapData): MapRoom[] {

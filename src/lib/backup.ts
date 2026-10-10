@@ -24,7 +24,9 @@ import type {
 } from '../types';
 import { ASSIGNMENT_LISTS, ASSIGNMENT_TEXT, CLASS_LISTS, CLASS_TEXT, PROFILE_MAPS, PROFILE_TEXT } from '../data/limits';
 import { clean } from '../data/store';
+import { SCHOOLS } from '../schools';
 import { toISODate } from './dates';
+import { stampMapSchool } from './mapData';
 import { isClockTime } from './schedule';
 
 export const BACKUP_APP = 'school-day-tracker';
@@ -136,6 +138,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const SCHOOL_IDS: readonly SchoolId[] = ['hsn', 'cms', 'other'];
+const MAP_SCHOOL_IDS = SCHOOL_IDS.filter((id) => SCHOOLS[id].hasMap);
 const TERMS: readonly Term[] = ['full', 'S1', 'S2', 'Q1', 'Q2', 'Q3', 'Q4'];
 const LEVELS: readonly CourseLevel[] = ['CP', 'Honors', 'AP', 'Accelerated', 'Other'];
 const TYPES: readonly AssignmentType[] = ['homework', 'test', 'quiz', 'project', 'essay', 'reading', 'lab', 'other'];
@@ -166,7 +169,8 @@ function customFields(v: unknown, cut: Cut): CustomField[] {
 
 function room(v: unknown, cut: () => void): ClassRoom {
   const r = isObj(v) ? v : {};
-  return { label: text(r.label, LINE, cut) ?? '', mapKey: text(r.mapKey, 200), where: text(r.where, LINE, cut) };
+  const mapKey = text(r.mapKey, 200);
+  return { label: text(r.label, LINE, cut) ?? '', mapKey, mapSchool: mapKey && oneOf(MAP_SCHOOL_IDS, r.mapSchool) ? r.mapSchool : undefined, where: text(r.where, LINE, cut) };
 }
 
 function teacher(v: unknown, cut: Cut): Teacher {
@@ -447,7 +451,9 @@ export function parseBackup(textContent: string): ParsedBackup {
   const warnings: string[] = [];
   const shortened = shortenings();
   const now = Date.now();
-  const classes = items(raw.classes, ['class', 'classes'], (x, cut) => sanitizeClass(x, now, cut), (c) => `“${c.name}”`, warnings, shortened);
+  // room links from before rooms kept their map's school are on the map of the school in the file
+  const fileSchool = isObj(raw.profile) && oneOf(SCHOOL_IDS, raw.profile.schoolId) ? raw.profile.schoolId : undefined;
+  const classes = items(raw.classes, ['class', 'classes'], (x, cut) => sanitizeClass(x, now, cut), (c) => `“${c.name}”`, warnings, shortened).map((c) => (fileSchool ? stampMapSchool(c, fileSchool) : c));
   const assignments = items(raw.assignments, ['assignment', 'assignments'], (x, cut) => sanitizeAssignment(x, now, cut), (a) => `“${a.title}”`, warnings, shortened);
   const settings = shortened.item();
   const profile = raw.profile === undefined || raw.profile === null ? null : sanitizeProfile(raw.profile, warnings, settings.cut);
