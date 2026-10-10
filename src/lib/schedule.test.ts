@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ClassInfo, DayInfo, DayOverride, ISODate, SchoolSchedule } from '../types';
 import { addDays } from './dates';
@@ -309,6 +311,88 @@ describe('resolveDay: rotation', () => {
     expect(cycleRun(s, '2026-09-08', 4)).toEqual(['D3', 'D3', 'D4', 'D1']);
   });
 
+  describe('a day change before the anchor only moves that date and later ones', () => {
+    // the anchor agrees with plain counting from 9/8 = D1; 9/21 is a day off
+    const anchored = () => {
+      const s = rotation();
+      s.calendar.anchor = { date: '2026-09-25', cycleDay: 'D1' };
+      return s;
+    };
+    const plain = ['D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D3', 'D4', 'D1']; // 9/8 .. 9/25
+
+    it('a cycle-day override', () => {
+      const s = anchored();
+      expect(cycleRun(s, '2026-09-08', 13)).toEqual(plain);
+      // 9/16 is "really" Day 1: 9/8..9/15 keep their days, the rotation goes on from 9/16 until the anchor
+      expect(cycleRun(s, '2026-09-08', 14, { '2026-09-16': { cycleDay: 'D1' } })).toEqual(['D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D1', 'D2']);
+    });
+
+    it('a snow day', () => {
+      const s = anchored();
+      const ov = { '2026-09-15': { noSchool: true, name: 'Snow day' } };
+      // 9/16 takes the day 9/15 would have had
+      expect(cycleRun(s, '2026-09-08', 12, ov)).toEqual(['D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D3', 'D1']);
+      expect(resolveDay(s, '2026-09-14', ov).cycleDay?.id).toBe('D1');
+      expect(resolveDay(s, '2026-09-16', ov).cycleDay?.id).toBe('D2');
+      expect(resolveDay(s, '2026-09-25', ov).cycleDay?.id).toBe('D1');
+    });
+
+    it('a make-up day', () => {
+      const s = anchored();
+      const ov = { '2026-09-12': { noSchool: false } };
+      expect(resolveDay(s, '2026-09-11', ov).cycleDay?.id).toBe('D4');
+      expect(resolveDay(s, '2026-09-12', ov).cycleDay?.id).toBe('D1');
+      expect(resolveDay(s, '2026-09-14', ov).cycleDay?.id).toBe('D2');
+      expect(resolveDay(s, '2026-09-25', ov).cycleDay?.id).toBe('D1');
+    });
+
+    it('a snow day on the first day of school', () => {
+      const s = anchored();
+      expect(cycleRun(s, '2026-09-08', 3, { '2026-09-08': { noSchool: true } })).toEqual(['D1', 'D2', 'D3']);
+    });
+
+    it('with the real HSN calendar (anchored in February)', () => {
+      const hsn = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../public/schools/hsn/schedule.json'), 'utf8')) as SchoolSchedule;
+      const letters = (ov: Record<ISODate, DayOverride>) => ['2026-09-02', '2026-10-08', '2026-10-09', '2026-10-13'].map((d) => resolveDay(hsn, d, ov).cycleDay?.id);
+      const before = letters({});
+      expect(before).toEqual(['A', 'A', 'B', 'D']);
+      expect(letters({ '2026-10-14': { cycleDay: 'C' } })).toEqual(before);
+      expect(letters({ '2026-11-03': { noSchool: true } })).toEqual(before);
+      expect(letters({ '2026-10-17': { noSchool: false } })).toEqual(before);
+      // a December snow day: the next day takes its letter
+      expect(resolveDay(hsn, '2026-12-02', { '2026-12-01': { noSchool: true } }).cycleDay?.id).toBe(resolveDay(hsn, '2026-12-01').cycleDay?.id);
+    });
+  });
+
+  it("carries a special day's cycle day over to the next school day when it becomes a day off", () => {
+    const s = rotation();
+    s.calendar.specialDays = [{ date: '2026-09-15', cycleDay: 'D4', name: 'Resync' }];
+    expect(cycleRun(s, '2026-09-14', 3)).toEqual(['D1', 'D4', 'D1']);
+    const snow = { '2026-09-15': { noSchool: true } };
+    expect(cycleRun(s, '2026-09-14', 3, snow)).toEqual(['D1', 'D4', 'D1']);
+    expect(resolveDay(s, '2026-09-16', snow).notes).toEqual([]);
+    // ...unless the next school day has its own cycle day
+    expect(resolveDay(s, '2026-09-16', { ...snow, '2026-09-16': { cycleDay: 'D2' } }).cycleDay?.id).toBe('D2');
+  });
+
+  it('counts make-up days just before or after the school year', () => {
+    const s = rotation(); // 9/8/2026 (D1) .. Fri 6/18/2027
+    const last = resolveDay(s, '2027-06-18').cycleDay!.id;
+    const ov = { '2027-06-21': { noSchool: false, name: 'Make-up day' }, '2026-09-04': { noSchool: false } };
+    const after = resolveDay(s, '2027-06-21', ov);
+    expect(after).toMatchObject({ isSchoolDay: true, notes: ['Make-up day'] });
+    expect(after.cycleDay?.id).toBe(s.cycle.days[(s.cycle.days.findIndex((d) => d.id === last) + 1) % 4].id);
+    expect(after.slots.length).toBeGreaterThan(0);
+    // counted backwards, so the year itself doesn't move
+    expect(resolveDay(s, '2026-09-04', ov).cycleDay?.id).toBe('D4');
+    expect(resolveDay(s, '2026-09-08', ov).cycleDay?.id).toBe('D1');
+    expect(resolveDay(s, '2027-06-18', ov).cycleDay?.id).toBe(last);
+    for (const d of ['2026-09-07', '2027-06-19', '2027-06-22']) expect(resolveDay(s, d, ov).reason).toBe('Summer break');
+    expect(nextSchoolDay((d) => resolveDay(s, d, ov), '2027-06-18')?.date).toBe('2027-06-21');
+    // a make-up day years away is ignored
+    expect(resolveDay(s, '2030-01-07', { '2030-01-07': { noSchool: false } }).isSchoolDay).toBe(false);
+  });
+
   it('has no cycle day when the schedule defines none', () => {
     const s = rotation();
     s.cycle.days = [];
@@ -566,6 +650,29 @@ describe('rotationRows', () => {
     expect(rows[2].start).toBeUndefined(); // 9:50-10:20 vs 9:50-10:40
     expect(rows[3].cells.map((c) => c?.period)).toEqual(['3', undefined, undefined, undefined]);
     expect(rows[3]).toMatchObject({ start: '10:25', end: '11:15' });
+  });
+});
+
+describe('slots without times', () => {
+  // a time cleared in the editor is saved as ''
+  const blank = () => {
+    const s = rotation();
+    s.bells[0].days['*'] = [
+      { period: '1', start: '', end: '08:50' },
+      { period: '2', start: '08:55', end: '09:45' },
+      { period: '3', start: '09:50', end: '' },
+    ];
+    return s;
+  };
+
+  it('are left out of the day, the rotation grid and meeting times', () => {
+    const s = blank();
+    const day = resolveDay(s, '2026-09-10'); // D3: the '*' times
+    expect(day.slots.map((x) => x.period)).toEqual(['2']);
+    expect(currentAndNext(day, 7 * 60)).toMatchObject({ state: 'before', next: { period: '2' }, minutesUntilNext: 115 });
+    expect(rotationRows(s).flatMap((r) => r.cells).some((c) => c && (!c.start || !c.end))).toBe(false);
+    expect(meetingTimes(s, { periods: ['1'] }).map((t) => t.cycleDay.id)).toEqual(['D1']);
+    expect(summarizeMeetingTimes(s, { periods: ['1', '3'] })).not.toMatch(/undefined|NaN/);
   });
 });
 

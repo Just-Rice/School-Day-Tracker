@@ -1,9 +1,9 @@
 import { Button } from '../ui';
 import IdInput from './IdInput';
-import { addCycleDay, moveItem, removeCycleDay, renameCycleDay, toWeekdayCycle, WEEKDAY_CYCLE } from './editorOps';
+import { addCycleDay, moveItem, removeCycleDay, toWeekdayCycle, WEEKDAY_CYCLE } from './editorOps';
 import type { EditorSectionProps } from './ScheduleEditor';
 
-export default function EditCycle({ s, onChange, ask }: EditorSectionProps) {
+export default function EditCycle({ s, onChange, rename, ask }: EditorSectionProps) {
   const weekday = s.cycle.mode === 'weekday';
   const isWeekdayIds = s.cycle.days.length > 0 && s.cycle.days.every((d) => WEEKDAY_CYCLE.some((w) => w.id === d.id));
   const setName = (i: number, name: string) => onChange({ ...s, cycle: { ...s.cycle, days: s.cycle.days.map((d, j) => (j === i ? { ...d, name } : d)) } });
@@ -12,7 +12,7 @@ export default function EditCycle({ s, onChange, ask }: EditorSectionProps) {
     if (isWeekdayIds) return onChange({ ...s, cycle: { ...s.cycle, mode: 'weekday' } });
     ask({
       title: 'Switch to weekdays?',
-      body: 'The cycle days become Monday to Friday. Times set for the current cycle days are dropped, except that bells without all-days times keep the first day’s times.',
+      body: 'The cycle days become Monday to Friday. Times set for the current cycle days are dropped, except that bells without all-days times keep the first day’s times. Classes that meet only on some cycle days, and day changes that set a cycle day, will need their days picked again.',
       confirmLabel: 'Switch',
       run: () => onChange(toWeekdayCycle(s)),
     });
@@ -41,7 +41,7 @@ export default function EditCycle({ s, onChange, ask }: EditorSectionProps) {
       <ul className="ed-rows">
         {s.cycle.days.map((d, i) => (
           <li key={i} className="ed-cycle">
-            <IdInput label={`ID of ${d.name || 'cycle day ' + (i + 1)}`} value={d.id} disabled={weekday} taken={s.cycle.days.filter((_, j) => j !== i).map((x) => x.id)} onCommit={(id) => onChange(renameCycleDay(s, d.id, id))} />
+            <IdInput label={`ID of ${d.name || 'cycle day ' + (i + 1)}`} value={d.id} disabled={weekday} taken={s.cycle.days.filter((_, j) => j !== i).map((x) => x.id)} onCommit={(id) => rename('cycleDay', d.id, id)} />
             <input aria-label={`Name of cycle day ${d.id}`} value={d.name} onChange={(e) => setName(i, e.target.value)} />
             {!weekday && (
               <span className="ed-btns">
@@ -56,7 +56,12 @@ export default function EditCycle({ s, onChange, ask }: EditorSectionProps) {
                   variant="ghost"
                   className="ed-del"
                   onClick={() =>
-                    ask({ title: `Remove ${d.name || d.id}?`, body: 'Its bell times are removed too.', confirmLabel: 'Remove', run: () => onChange(removeCycleDay(s, d.id)) })
+                    ask({
+                      title: `Remove ${d.name || d.id}?`,
+                      body: 'Its bell times are removed too. Classes set to meet on it, and day changes that use it, won’t match any day until you change them.',
+                      confirmLabel: 'Remove',
+                      run: () => onChange(removeCycleDay(s, d.id)),
+                    })
                   }
                   aria-label={`Remove ${d.name || d.id}`}
                 >

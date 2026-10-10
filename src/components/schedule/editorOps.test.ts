@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { SchoolSchedule } from '../../types';
-import { validateSchedule } from '../../lib/schedule';
+import type { ClassInfo, SchoolSchedule } from '../../types';
+import { classesOnDay, resolveDay, validateSchedule } from '../../lib/schedule';
 import {
   addBell,
   addCycleDay,
@@ -8,6 +8,9 @@ import {
   makeRegular,
   moveItem,
   nextSlot,
+  NO_RENAMES,
+  RENAME,
+  recordRename,
   periodUsage,
   prepareForSave,
   removeBell,
@@ -15,6 +18,8 @@ import {
   removePeriod,
   renameBell,
   renameCycleDay,
+  renameInClass,
+  renameInOverrides,
   renamePeriod,
   setBellDay,
   toWeekdayCycle,
@@ -176,5 +181,64 @@ describe('editorOps', () => {
       { date: '2026-11-02', end: undefined, name: 'B' },
     ]);
     expect(r.calendar.specialDays).toEqual([{ date: '2026-10-21', bell: undefined, cycleDay: undefined, name: undefined, advance: undefined }]);
+  });
+});
+
+describe('carrying renames over to classes and day changes', () => {
+  const cls = (p: Partial<ClassInfo>): ClassInfo => ({ id: 'c', name: 'C', teacher: { name: 'T' }, room: { label: '100' }, periods: [], term: 'full', color: '#123456', links: [], customFields: [], createdAt: 0, updatedAt: 0, ...p });
+
+  it('records renames of saved ids, collapsing chains and renames back', () => {
+    const saved = sched();
+    let r = recordRename(NO_RENAMES, saved, 'period', '1', 'P1');
+    r = recordRename(r, saved, 'period', 'P1', 'First');
+    r = recordRename(r, saved, 'cycleDay', 'A', 'DA');
+    r = recordRename(r, saved, 'bell', 'early', 'half');
+    r = recordRename(r, saved, 'bell', 'half', 'early');
+    expect(r).toEqual({ period: { '1': 'First' }, cycleDay: { A: 'DA' }, bell: {} });
+    // a swap through a temporary id
+    let w = recordRename(NO_RENAMES, saved, 'period', '1', 'x');
+    w = recordRename(w, saved, 'period', '2', '1');
+    w = recordRename(w, saved, 'period', 'x', '2');
+    expect(w.period).toEqual({ '1': '2', '2': '1' });
+    // ids added while editing (or a new one reusing a renamed id) aren't tracked
+    expect(recordRename(NO_RENAMES, saved, 'period', '9', 'P9')).toBe(NO_RENAMES);
+    const reuse = recordRename(recordRename(NO_RENAMES, saved, 'period', '1', 'P1'), saved, 'period', '1', 'new');
+    expect(reuse.period).toEqual({ '1': 'P1' });
+  });
+
+  it("renames a class's periods, days and alternate-room days, keeping untouched classes as they are", () => {
+    const r = { period: { '1': 'P1' }, cycleDay: { A: 'DA' }, bell: {} };
+    const math = cls({ periods: ['1', '2'], days: ['A', 'B'], altRooms: [{ days: ['A'], room: { label: 'Lab' } }, { days: ['B'], room: { label: 'Gym' } }] });
+    const out = renameInClass(math, r);
+    expect(out).toMatchObject({ periods: ['P1', '2'], days: ['DA', 'B'], altRooms: [{ days: ['DA'], room: { label: 'Lab' } }, { days: ['B'], room: { label: 'Gym' } }] });
+    expect(out.altRooms?.[1]).toBe(math.altRooms?.[1]);
+    const other = cls({ periods: ['2'] });
+    expect(renameInClass(other, r)).toBe(other);
+    expect(renameInClass(cls({ periods: ['constructor'] }), r).periods).toEqual(['constructor']);
+  });
+
+  it("renames day changes' cycle days and bells", () => {
+    const r = { period: {}, cycleDay: { A: 'DA' }, bell: { early: 'half' } };
+    const o = { '2026-10-21': { bell: 'early', name: 'Half day' }, '2026-10-22': { cycleDay: 'A' }, '2026-10-23': { noSchool: true } };
+    expect(renameInOverrides(o, r)).toEqual({ '2026-10-21': { bell: 'half', name: 'Half day' }, '2026-10-22': { cycleDay: 'DA' }, '2026-10-23': { noSchool: true } });
+    const same = { '2026-10-23': { noSchool: true }, '2026-10-24': { bell: 'regular' } };
+    expect(renameInOverrides(same, r)).toBe(same);
+  });
+
+  it('keeps classes on the schedule after a rename', () => {
+    const saved = sched();
+    const classes = [cls({ id: 'm', name: 'Math', periods: ['1'] }), cls({ id: 'pe', name: 'PE', periods: ['2'], days: ['B'] })];
+    let s = saved;
+    let r = NO_RENAMES;
+    for (const [kind, from, to] of [['period', '1', 'P1'], ['cycleDay', 'B', 'DB'], ['bell', 'early', 'half']] as const) {
+      s = RENAME[kind](s, from, to);
+      r = recordRename(r, saved, kind, from, to);
+    }
+    const moved = classes.map((c) => renameInClass(c, r));
+    const ov = renameInOverrides({ '2026-09-09': { bell: 'early' } }, r);
+    const names = (date: string) => classesOnDay(resolveDay(s, date, ov), moved).map((m) => m.cls?.name ?? '-');
+    expect(names('2026-09-08')).toEqual(['Math', '-']); // A
+    expect(resolveDay(s, '2026-09-09', ov).bell?.id).toBe('half');
+    expect(names('2026-09-11')).toEqual(['PE']); // DB
   });
 });

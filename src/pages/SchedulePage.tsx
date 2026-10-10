@@ -6,7 +6,7 @@ import CalendarView from '../components/schedule/CalendarView';
 import DayOverridesCard from '../components/schedule/DayOverridesCard';
 import ScheduleEditor from '../components/schedule/ScheduleEditor';
 import { DayChips } from '../components/schedule/bits';
-import { prepareForSave } from '../components/schedule/editorOps';
+import { prepareForSave, renameInClass, renameInOverrides } from '../components/schedule/editorOps';
 import { useConfirm } from '../components/schedule/useConfirm';
 import { useData } from '../data/DataProvider';
 import { clean } from '../data/store';
@@ -32,7 +32,7 @@ function SourceLinks({ urls }: { urls: string[] }) {
 }
 
 export default function SchedulePage() {
-  const { profile, saveProfile } = useData();
+  const { profile, classes, saveProfile, saveClass } = useData();
   const { schedule, loading, error, getDay } = useSchedule();
   const now = useNow(60000);
   const today = todayISO(now);
@@ -44,7 +44,7 @@ export default function SchedulePage() {
   const isCustom = !!activeCustomSchedule(profile);
   const todayInfo = getDay(today);
 
-  const customize = async (base: SchoolSchedule) => {
+  const copy = async (base: SchoolSchedule) => {
     setBusy(true);
     setProblem(null);
     try {
@@ -55,6 +55,18 @@ export default function SchedulePage() {
     } finally {
       setBusy(false);
     }
+  };
+  // there's room for one custom schedule; one made for another school is kept until replaced here
+  const otherCustom = !isCustom ? profile.customSchedule : undefined;
+  const customize = async (base: SchoolSchedule) => {
+    if (!otherCustom) return copy(base);
+    const was = otherCustom.schoolId && otherCustom.schoolId !== 'other' ? (SCHOOLS[otherCustom.schoolId]?.short ?? 'your other school') : 'your other school';
+    ask({
+      title: `Replace your custom schedule for ${was}?`,
+      body: `You can keep only one custom bell schedule, so customizing this one replaces the one you made for ${was}.`,
+      confirmLabel: 'Replace',
+      run: () => void copy(base),
+    });
   };
   const fromTemplate = async () => {
     try {
@@ -123,14 +135,23 @@ export default function SchedulePage() {
           today={today}
           ask={ask}
           onCancel={() => setEditing(false)}
-          onSave={async (s) => {
+          onSave={async (s, renames) => {
+            setProblem(null);
+            // renamed period, cycle day and bell ids carry over to the classes and day changes using them
+            const dayOverrides = renameInOverrides(profile.dayOverrides, renames);
             try {
-              await saveProfile({ customSchedule: clean(prepareForSave(s)) });
-              setEditing(false);
-              window.scrollTo?.({ top: 0 });
+              await saveProfile({ customSchedule: clean(prepareForSave(s)), ...(dayOverrides !== profile.dayOverrides && { dayOverrides }) });
             } catch {
-              setProblem('Could not save the schedule.');
+              return setProblem('Could not save the schedule.');
             }
+            try {
+              await Promise.all(classes.map((c) => renameInClass(c, renames)).filter((c, i) => c !== classes[i]).map((c) => saveClass(c)));
+            } catch {
+              // the schedule is saved, so close the editor (saving again would apply the renames twice)
+              setProblem('The schedule was saved, but some classes could not be updated to the new IDs. Check their periods and days.');
+            }
+            setEditing(false);
+            window.scrollTo?.({ top: 0 });
           }}
         />
         {problem && <p className="banner banner-error">{problem}</p>}

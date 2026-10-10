@@ -76,7 +76,8 @@ the JSON forces the letter on the first school day after each emergency closing 
 | Tue Jun 1, 2027 | C Day | after emergency closing day #3 (May 28 would have been B) |
 
 If the morning announcements or a teacher say otherwise on one of these days, add a day change that sets the letter.
-The rotation continues from that day.
+The rotation continues from that day. If one of these days becomes a snow day, its letter carries over to the next school
+day, the same way the anchor does.
 
 ### Special days in the HSN file
 
@@ -333,7 +334,9 @@ above are spelled out in each file's `source.note`, which the app shows under "A
 
 - **Snow day, delayed opening, "today is actually a C Day":** open **Schedule**, then **Day changes**. Pick the date and
   choose no school, a different bell (for example "90-minute delayed opening"), or the cycle day. The rotation continues
-  from a day whose letter you set.
+  from a day whose letter you set. A day change only moves that date and the days after it, up to the next date the file
+  sets a letter on (a resync day or the anchor). Earlier days keep their letters. A make-up day ("School on a day off") can
+  also be after the last day of school or before the first; it continues the rotation from the nearest school day.
 - **Different bell times or periods:** open **Schedule** and press **Customize**. This makes your own copy of the
   school's schedule, where you can edit periods, bells, special days and the calendar. It is saved to your account (or
   this device in local mode), and the built-in file is not touched.

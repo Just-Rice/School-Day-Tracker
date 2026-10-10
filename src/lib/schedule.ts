@@ -20,6 +20,11 @@ export function isClockTime(s: unknown): s is ClockTime {
   return typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 }
 
+/** whether a slot has a valid start and end time (a cleared time in the editor leaves '') */
+export function hasTimes(slot: BellSlot): boolean {
+  return isClockTime(slot.start) && isClockTime(slot.end);
+}
+
 const byStart = (a: BellSlot, b: BellSlot) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.end < b.end ? -1 : a.end > b.end ? 1 : 0);
 
 export function sortSlots(slots: BellSlot[]): BellSlot[] {
@@ -110,38 +115,60 @@ function getResolver(schedule: SchoolSchedule, overrides: Record<ISODate, DayOve
   return r;
 }
 
-/** Precomputes school/no-school and the cycle day for every date of the school year. */
+/**
+ * Precomputes school/no-school and the cycle day for every date of the school year (stretched to
+ * take in make-up days the user added just before or after it).
+ */
 function buildResolver(schedule: SchoolSchedule, overrides: Record<ISODate, DayOverride>): Resolver {
   const cal = schedule.calendar;
   const special = new Map<ISODate, SpecialDay>();
   for (const d of cal?.specialDays ?? []) if (isISODate(d.date) && !special.has(d.date)) special.set(d.date, d);
 
   const valid = !!cal && isISODate(cal.firstDay) && isISODate(cal.lastDay) && cal.firstDay <= cal.lastDay;
-  const first = valid ? cal.firstDay : null;
-  const span = valid ? Math.min(daysBetween(cal.firstDay, cal.lastDay), MAX_SPAN_DAYS) + 1 : 0;
-  const resolver: Resolver = { schedule, overrides, first, status: [], special, days: new Map() };
-  if (!first) return resolver;
+  const resolver: Resolver = { schedule, overrides, first: null, status: [], special, days: new Map() };
+  if (!valid) return resolver;
+  const yearFirst = cal.firstDay;
+  const yearLast = addDays(yearFirst, Math.min(daysBetween(yearFirst, cal.lastDay), MAX_SPAN_DAYS));
+  // a make-up day (noSchool: false) outside the year, e.g. one added after the last day when the
+  // emergency closing days run out, still counts
+  let first = yearFirst;
+  let last = yearLast;
+  const makeUps = Object.keys(overrides)
+    .filter((d) => overrides[d]?.noSchool === false && isISODate(d))
+    .sort();
+  for (const d of makeUps) if (d > last && daysBetween(first, d) <= MAX_SPAN_DAYS) last = d;
+  for (const d of makeUps.reverse()) if (d < first && daysBetween(d, last) <= MAX_SPAN_DAYS) first = d;
+  const span = daysBetween(first, last) + 1;
+  const y0 = daysBetween(first, yearFirst);
+  const y1 = daysBetween(first, yearLast);
+  resolver.first = first;
 
   // Named no-school ranges, clamped to the year (first listed wins where they overlap)
   const off: (string | undefined)[] = new Array(span);
   for (const ns of cal.noSchool ?? []) {
     if (!isISODate(ns.date)) continue;
     const end = isISODate(ns.end) && ns.end >= ns.date ? ns.end : ns.date;
-    const a = Math.max(0, daysBetween(first, ns.date));
-    const b = Math.min(span - 1, daysBetween(first, end));
+    const a = Math.max(y0, daysBetween(first, ns.date));
+    const b = Math.min(y1, daysBetween(first, end));
     for (let i = a; i <= b; i++) off[i] ??= ns.name || 'No school';
   }
 
   const dates: ISODate[] = new Array(span);
   const status: DateStatus[] = new Array(span);
+  // school days by the schedule alone, without the user's overrides
+  const scheduled: boolean[] = new Array(span);
   let date = first;
   for (let i = 0; i < span; i++, date = addDays(date, 1)) {
     dates[i] = date;
+    const inYear = i >= y0 && i <= y1;
+    const calendarOff = inYear ? (off[i] ?? (isWeekend(date) ? 'Weekend' : undefined)) : 'Summer break';
+    scheduled[i] = !calendarOff;
     const ov = overrides[date];
     let reason: string | undefined;
-    if (ov?.noSchool === true) reason = ov.name || 'No school';
-    // noSchool: false is a make-up day: school even on a weekend or holiday
-    else if (ov?.noSchool !== false) reason = off[i] ?? (isWeekend(date) ? 'Weekend' : undefined);
+    // noSchool: false is a make-up day: school even on a weekend, a holiday or in the summer
+    if (ov?.noSchool === false) reason = undefined;
+    else if (ov?.noSchool === true && inYear) reason = ov.name || 'No school';
+    else reason = calendarOff;
     status[i] = reason ? { school: false, reason } : { school: true };
   }
   resolver.status = status;
@@ -150,49 +177,73 @@ function buildResolver(schedule: SchoolSchedule, overrides: Record<ISODate, DayO
   const n = cycleDays.length;
   if (n === 0) return resolver;
   const indexOf = new Map(cycleDays.map((d, i) => [d.id, i]));
-  const forcedAt = (d: ISODate): number | undefined => {
-    const ov = overrides[d]?.cycleDay;
-    if (ov !== undefined && indexOf.has(ov)) return indexOf.get(ov);
-    const sp = special.get(d)?.cycleDay;
-    return sp !== undefined ? indexOf.get(sp) : undefined;
-  };
+  const cycleIndex = (id: string | undefined) => (id === undefined ? undefined : indexOf.get(id));
 
   if (schedule.cycle.mode === 'weekday') {
     for (let i = 0; i < span; i++) {
       if (!status[i].school) continue;
-      status[i].cycle = forcedAt(dates[i]) ?? indexOf.get(WEEKDAY_IDS[weekday(dates[i])]);
+      const d = dates[i];
+      status[i].cycle = cycleIndex(overrides[d]?.cycleDay) ?? cycleIndex(special.get(d)?.cycleDay) ?? indexOf.get(WEEKDAY_IDS[weekday(d)]);
     }
     return resolver;
   }
 
-  // Rotation: one cycle day per school day. Forced days (overrides, special days, the anchor)
-  // set the cycle day and the rotation continues from them; days before the first forced day
-  // are counted backwards from it.
+  // Rotation: one cycle day per school day. Forced days (a user override, a special day, the
+  // anchor) set the cycle day and the rotation continues from them.
+  const anchor = cal.anchor;
+  const anchorAt = anchor && isISODate(anchor.date) && indexOf.has(anchor.cycleDay) && anchor.date >= yearFirst && anchor.date <= yearLast ? daysBetween(first, anchor.date) : -1;
+  /**
+   * The forced cycle day of each school day in `school`. A special day's cycle day or the anchor
+   * on a day off (e.g. a snow day) carries over to the next school day that isn't forced itself.
+   */
+  const forcedDays = (school: boolean[], withOverrides: boolean) => {
+    const forced: (number | undefined)[] = new Array(span);
+    let anchored = false;
+    let carried: number | undefined;
+    for (let i = 0; i < span; i++) {
+      const sp = cycleIndex(special.get(dates[i])?.cycleDay);
+      if (!school[i]) {
+        carried = sp ?? carried;
+        continue;
+      }
+      let a: number | undefined;
+      if (anchorAt >= 0 && !anchored && i >= anchorAt && i <= y1) {
+        a = cycleIndex(anchor!.cycleDay);
+        anchored = true;
+      }
+      forced[i] = (withOverrides ? cycleIndex(overrides[dates[i]]?.cycleDay) : undefined) ?? sp ?? a ?? carried;
+      carried = undefined;
+    }
+    return { forced, anchored };
+  };
+  const advances = (forced: (number | undefined)[], i: number) => forced[i] !== undefined || special.get(dates[i])?.advance !== false;
+  const mod = (x: number) => ((x % n) + n) % n;
+
+  // The schedule alone sets the cycle day of its first school day: counted backwards from the
+  // first forced day when there's an anchor, otherwise the first cycle day.
+  const base = forcedDays(scheduled, false);
+  const baseSchool: number[] = [];
+  for (let i = 0; i < span; i++) if (scheduled[i]) baseSchool.push(i);
+  let start = 0;
+  if (baseSchool.length) {
+    const f = base.anchored ? baseSchool.findIndex((i) => base.forced[i] !== undefined) : 0;
+    start = base.forced[baseSchool[f]] ?? 0;
+    for (let p = f - 1; p >= 0; p--) if (advances(base.forced, baseSchool[p + 1])) start = mod(start - 1);
+  }
+
+  // The user's day changes only move their own date and the days after it (up to the next forced
+  // day), never earlier ones: walk forward from the schedule's first school day. School days the
+  // user added before it are counted backwards.
+  const { forced } = forcedDays(status.map((st) => st.school), true);
   const school: number[] = [];
   for (let i = 0; i < span; i++) if (status[i].school) school.push(i);
   if (school.length === 0) return resolver;
-  const forced = school.map((i) => forcedAt(dates[i]));
-
-  const anchor = cal.anchor;
-  let anchored = false;
-  if (anchor && isISODate(anchor.date) && indexOf.has(anchor.cycleDay) && anchor.date >= first) {
-    // an anchor on a day off (e.g. a snow day) carries over to the next school day
-    const ai = daysBetween(first, anchor.date);
-    const p = school.findIndex((i) => i >= ai);
-    if (p >= 0) {
-      forced[p] ??= indexOf.get(anchor.cycleDay);
-      anchored = true;
-    }
-  }
-  if (!anchored) forced[0] ??= 0;
-
-  const advances = (p: number) => forced[p] !== undefined || special.get(dates[school[p]])?.advance !== false;
-  const mod = (x: number) => ((x % n) + n) % n;
+  let s = school.findIndex((i) => i >= (baseSchool[0] ?? 0));
+  if (s < 0) s = school.length - 1;
   const cyc: number[] = new Array(school.length);
-  const f = forced.findIndex((x) => x !== undefined);
-  cyc[f] = forced[f]!;
-  for (let p = f - 1; p >= 0; p--) cyc[p] = advances(p + 1) ? mod(cyc[p + 1] - 1) : cyc[p + 1];
-  for (let p = f + 1; p < school.length; p++) cyc[p] = forced[p] ?? (advances(p) ? mod(cyc[p - 1] + 1) : cyc[p - 1]);
+  cyc[s] = forced[school[s]] ?? start;
+  for (let p = s + 1; p < school.length; p++) cyc[p] = forced[school[p]] ?? (advances(forced, school[p]) ? mod(cyc[p - 1] + 1) : cyc[p - 1]);
+  for (let p = s - 1; p >= 0; p--) cyc[p] = forced[school[p]] ?? (advances(forced, school[p + 1]) ? mod(cyc[p + 1] - 1) : cyc[p + 1]);
   school.forEach((i, p) => (status[i].cycle = cyc[p]));
   return resolver;
 }
@@ -229,7 +280,7 @@ function computeDay(r: Resolver, date: ISODate): DayInfo {
   const sp = r.special.get(date);
   const cycleDay = st.cycle !== undefined ? schedule.cycle.days[st.cycle] : undefined;
   const bell = findBell(schedule, ov?.bell) ?? findBell(schedule, sp?.bell) ?? schedule.bells?.[0];
-  const slots = bell ? sortSlots((cycleDay && bell.days[cycleDay.id]) ?? bell.days['*'] ?? []) : [];
+  const slots = bell ? sortSlots(((cycleDay && bell.days[cycleDay.id]) ?? bell.days['*'] ?? []).filter(hasTimes)) : [];
   const notes: string[] = [];
   for (const n of [sp?.name, ov?.name]) if (n && !notes.includes(n)) notes.push(n);
   return { date, isSchoolDay: true, cycleDay, bell, slots, notes };
@@ -263,7 +314,7 @@ export interface CurrentAndNext {
 /** Where `minutes` (after midnight, may be fractional) falls in a day's slots. */
 export function currentAndNext(day: DayInfo, minutes: number): CurrentAndNext {
   if (!day.isSchoolDay) return { state: 'no-school' };
-  const slots = sortSlots(day.slots.filter((s) => isClockTime(s.start) && isClockTime(s.end)));
+  const slots = sortSlots(day.slots.filter(hasTimes));
   if (slots.length === 0) return { state: 'after' };
 
   // With overlapping slots (lunch waves inside a period) the one that started last is "current".
@@ -390,7 +441,7 @@ export function meetingTimes(schedule: SchoolSchedule, cls: Pick<ClassInfo, 'per
   const out: MeetingTime[] = [];
   for (const d of days) {
     if (cls.days?.length && d !== EVERY_DAY && !cls.days.includes(d.id)) continue;
-    const slots = sortSlots((bell.days[d.id] ?? bell.days['*'] ?? []).filter((s) => cls.periods.includes(s.period)));
+    const slots = sortSlots((bell.days[d.id] ?? bell.days['*'] ?? []).filter((s) => cls.periods.includes(s.period) && hasTimes(s)));
     if (slots.length) out.push({ cycleDay: d, slots });
   }
   return out;
@@ -434,7 +485,7 @@ export interface RotationRow {
 
 export function rotationRows(schedule: SchoolSchedule, bell: Bell | undefined = schedule.bells?.[0]): RotationRow[] {
   if (!bell) return [];
-  const perDay = schedule.cycle.days.map((d) => sortSlots(bell.days[d.id] ?? bell.days['*'] ?? []));
+  const perDay = schedule.cycle.days.map((d) => sortSlots((bell.days[d.id] ?? bell.days['*'] ?? []).filter(hasTimes)));
   const rows = Math.max(0, ...perDay.map((s) => s.length));
   const out: RotationRow[] = [];
   for (let i = 0; i < rows; i++) {

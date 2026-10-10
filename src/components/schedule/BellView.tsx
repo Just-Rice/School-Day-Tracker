@@ -1,7 +1,7 @@
 import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import type { SchoolSchedule } from '../../types';
 import { toMinutes } from '../../lib/dates';
-import { formatTimeRange, slotKind, slotName, sortSlots } from '../../lib/schedule';
+import { formatTimeRange, hasTimes, slotKind, slotName, sortSlots } from '../../lib/schedule';
 import { Chip } from '../ui';
 
 /** Bells as tabs; each shows its slots, per cycle day when the bell has per-day times. */
@@ -16,7 +16,7 @@ export default function BellView({ schedule, clock, todayBellId, todayCycleId }:
 
   const perDay = Object.keys(bell.days).some((k) => k !== '*') && schedule.cycle.days.length > 0;
   const day = schedule.cycle.days.find((d) => d.id === dayId) ?? schedule.cycle.days[0];
-  const slots = sortSlots((perDay && day ? bell.days[day.id] : undefined) ?? bell.days['*'] ?? []);
+  const slots = sortSlots(((perDay && day ? bell.days[day.id] : undefined) ?? bell.days['*'] ?? []).filter(hasTimes));
   const index = bells.indexOf(bell);
 
   const onKey = (e: KeyboardEvent) => {

@@ -3,10 +3,10 @@ import type { Bell, BellSlot, SlotKind } from '../../types';
 import { sortSlots } from '../../lib/schedule';
 import { Button, Chip, Field } from '../ui';
 import IdInput from './IdInput';
-import { addBell, makeRegular, nextSlot, removeBell, renameBell, setBellDay, SLOT_KINDS, updateBell } from './editorOps';
+import { addBell, makeRegular, nextSlot, removeBell, setBellDay, SLOT_KINDS, updateBell } from './editorOps';
 import type { EditorSectionProps } from './ScheduleEditor';
 
-export default function EditBells({ s, onChange, ask }: EditorSectionProps) {
+export default function EditBells({ s, onChange, rename, ask }: EditorSectionProps) {
   const [bellId, setBellId] = useState(s.bells[0]?.id ?? '');
   const bell = s.bells.find((b) => b.id === bellId) ?? s.bells[0];
   const cycleDays = s.cycle.days;
@@ -56,7 +56,7 @@ export default function EditBells({ s, onChange, ask }: EditorSectionProps) {
             value={bell.id}
             taken={s.bells.filter((b) => b !== bell).map((b) => b.id)}
             onCommit={(id) => {
-              onChange(renameBell(s, bell.id, id));
+              rename('bell', bell.id, id);
               setBellId(id);
             }}
           />
@@ -95,7 +95,7 @@ export default function EditBells({ s, onChange, ask }: EditorSectionProps) {
             onClick={() =>
               ask({
                 title: `Remove ${bell.name || bell.id}?`,
-                body: 'Special days that use it will use the regular bell instead.',
+                body: 'Special days and day changes that use it will use the regular bell instead.',
                 confirmLabel: 'Remove',
                 run: () => {
                   const next = removeBell(s, bell.id);

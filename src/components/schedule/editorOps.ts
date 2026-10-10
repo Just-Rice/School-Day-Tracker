@@ -1,6 +1,7 @@
-// Immutable edits for the schedule editor. Renames cascade to everything that refers to the id
-// (bell slots, special days, the anchor) so a rename never leaves dangling references.
-import type { Bell, BellSlot, CycleDay, SchoolSchedule, SlotKind } from '../../types';
+// Immutable edits for the schedule editor. Renames cascade to everything in the schedule that
+// refers to the id (bell slots, special days, the anchor). The editor also records them
+// (recordRename) so saving can carry them over to the user's classes and day changes.
+import type { Bell, BellSlot, ClassInfo, CycleDay, DayOverride, ISODate, SchoolSchedule, SlotKind } from '../../types';
 import { fromMinutes, toMinutes } from '../../lib/dates';
 import { isClockTime } from '../../lib/schedule';
 
@@ -185,6 +186,71 @@ export function nextSlot(slots: BellSlot[], periods: { id: string }[]): BellSlot
   const len = Math.max(5, toMinutes(last.end) - toMinutes(last.start));
   const start = Math.min(toMinutes(last.end) + 5, 23 * 60);
   return { period, start: fromMinutes(start), end: fromMinutes(Math.min(start + len, 23 * 60 + 59)) };
+}
+
+// ------------------------------------------------------------------------------------ renames
+
+export type IdKind = 'period' | 'cycleDay' | 'bell';
+/** ids renamed in the editor: id in the saved schedule -> its new id */
+export type Renames = Record<IdKind, Record<string, string>>;
+export const NO_RENAMES: Renames = { period: {}, cycleDay: {}, bell: {} };
+
+export const RENAME: Record<IdKind, (s: SchoolSchedule, from: string, to: string) => SchoolSchedule> = { period: renamePeriod, cycleDay: renameCycleDay, bell: renameBell };
+
+function idsOf(s: SchoolSchedule, kind: IdKind): string[] {
+  if (kind === 'period') return s.periods.map((p) => p.id);
+  if (kind === 'cycleDay') return s.cycle.days.map((d) => d.id);
+  return s.bells.map((b) => b.id);
+}
+
+/**
+ * `r` plus a rename of `from` to `to`. Only ids of `saved` (the schedule before editing) are
+ * tracked, since classes and day changes can only refer to those; chained renames collapse.
+ */
+export function recordRename(r: Renames, saved: SchoolSchedule, kind: IdKind, from: string, to: string): Renames {
+  const map = { ...r[kind] };
+  const orig = Object.keys(map).find((k) => map[k] === from);
+  if (orig !== undefined) map[orig] = to;
+  // `from` in map: the saved item was renamed away and this is a new one with its old id
+  else if (!Object.hasOwn(map, from) && idsOf(saved, kind).includes(from)) map[from] = to;
+  else return r;
+  for (const k of Object.keys(map)) if (map[k] === k) delete map[k];
+  return { ...r, [kind]: map };
+}
+
+const renamed = (id: string, map: Record<string, string>) => (Object.hasOwn(map, id) ? map[id] : id);
+
+function renameIds(ids: string[] | undefined, map: Record<string, string>): string[] | undefined {
+  return ids?.some((id) => Object.hasOwn(map, id)) ? ids.map((id) => renamed(id, map)) : ids;
+}
+
+/** `cls` with its period and cycle day ids renamed; `cls` itself when none of them were */
+export function renameInClass(cls: ClassInfo, r: Renames): ClassInfo {
+  const periods = renameIds(cls.periods, r.period) ?? cls.periods;
+  const days = renameIds(cls.days, r.cycleDay);
+  const altRooms = cls.altRooms?.map((a) => {
+    const d = renameIds(a.days, r.cycleDay) ?? a.days;
+    return d === a.days ? a : { ...a, days: d };
+  });
+  const altChanged = !!altRooms?.some((a, i) => a !== cls.altRooms?.[i]);
+  if (periods === cls.periods && days === cls.days && !altChanged) return cls;
+  return { ...cls, periods, days, altRooms: altChanged ? altRooms : cls.altRooms };
+}
+
+/** day changes with their cycle day and bell ids renamed; `o` itself when none were */
+export function renameInOverrides(o: Record<ISODate, DayOverride>, r: Renames): Record<ISODate, DayOverride> {
+  let changed = false;
+  const out: Record<ISODate, DayOverride> = {};
+  for (const [d, ov] of Object.entries(o)) {
+    const cycleDay = ov.cycleDay === undefined ? undefined : renamed(ov.cycleDay, r.cycleDay);
+    const bell = ov.bell === undefined ? undefined : renamed(ov.bell, r.bell);
+    if (cycleDay === ov.cycleDay && bell === ov.bell) out[d] = ov;
+    else {
+      changed = true;
+      out[d] = { ...ov, cycleDay, bell };
+    }
+  }
+  return changed ? out : o;
 }
 
 // ------------------------------------------------------------------------------------- saving
