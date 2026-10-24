@@ -2,6 +2,7 @@ import { createHashRouter, createRoutesFromElements, Navigate, Route, RouterProv
 import { AuthProvider } from './auth/AuthProvider';
 import { DataProvider } from './data/DataProvider';
 import Layout from './components/Layout';
+import PageError from './components/PageError';
 import TodayPage from './pages/TodayPage';
 import WeekPage from './pages/WeekPage';
 import SchedulePage from './pages/SchedulePage';
@@ -21,22 +22,25 @@ import OnboardingPage from './pages/OnboardingPage';
 const router = createHashRouter(
   createRoutesFromElements(
     <>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/welcome" element={<OnboardingPage />} />
-      <Route element={<Layout />}>
-        <Route index element={<TodayPage />} />
-        <Route path="week" element={<WeekPage />} />
-        <Route path="schedule" element={<SchedulePage />} />
-        <Route path="classes" element={<ClassesPage />} />
-        <Route path="classes/new" element={<ClassEditPage />} />
-        <Route path="classes/:id" element={<ClassDetailPage />} />
-        <Route path="classes/:id/edit" element={<ClassEditPage />} />
-        <Route path="homework" element={<HomeworkPage />} />
-        <Route path="homework/new" element={<HomeworkEditPage />} />
-        <Route path="homework/:id" element={<HomeworkEditPage />} />
-        <Route path="map" element={<MapPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/login" element={<LoginPage />} errorElement={<PageError full />} />
+      <Route path="/welcome" element={<OnboardingPage />} errorElement={<PageError full />} />
+      <Route element={<Layout />} errorElement={<PageError full />}>
+        {/* a page that crashes shows an error in its place, with the nav still there */}
+        <Route errorElement={<PageError />}>
+          <Route index element={<TodayPage />} />
+          <Route path="week" element={<WeekPage />} />
+          <Route path="schedule" element={<SchedulePage />} />
+          <Route path="classes" element={<ClassesPage />} />
+          <Route path="classes/new" element={<ClassEditPage />} />
+          <Route path="classes/:id" element={<ClassDetailPage />} />
+          <Route path="classes/:id/edit" element={<ClassEditPage />} />
+          <Route path="homework" element={<HomeworkPage />} />
+          <Route path="homework/new" element={<HomeworkEditPage />} />
+          <Route path="homework/:id" element={<HomeworkEditPage />} />
+          <Route path="map" element={<MapPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
       </Route>
     </>,
   ),

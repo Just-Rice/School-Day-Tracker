@@ -107,6 +107,15 @@ function distToRect(r: Rect, p: Pt): number {
 }
 
 /** Ramer-Douglas-Peucker: drops points closer than tol to the line through their neighbors */
+/** how far (m) the straightened route may stray from the walked one */
+const SIMPLIFY_TOL = 1.1;
+/**
+ * A point counts as indoors this close to the building's footprint: the 0.5 m the route keeps
+ * from walls, plus the straightening, which can cut a corner past the footprint's edge (a route
+ * out of Room 304 at CMS read "walk 10 m outside" while it never left the hallway).
+ */
+const INDOOR_MARGIN = 0.5 + SIMPLIFY_TOL;
+
 function rdp(pts: Pt[], tol: number): Pt[] {
   if (pts.length < 3) return pts.slice();
   const keep = new Uint8Array(pts.length);
@@ -152,7 +161,7 @@ const JOG = 3;
  * the approach that says which side the door is on.
  */
 export function cleanSegments(pts: Pt[], o: MapOrientation | undefined, keepFirst: boolean, keepLast: boolean): Seg[] {
-  const p = rdp(pts, 1.1);
+  const p = rdp(pts, SIMPLIFY_TOL);
   const lateral = (i: number) => {
     const a = Math.abs(turnAngle(o, seg(p[i - 1], p[i]), seg(p[i], p[i + 1])));
     const short = Math.min(dist(p[i - 1], p[i]), dist(p[i], p[i + 1]));
@@ -245,8 +254,8 @@ class Landmarks {
     this.rooms = rooms;
     this.skip = skip;
     for (const r of data.blocks)
-      for (let i = Math.floor((r[0] - 0.5) / BUCKET); i <= Math.floor((r[2] + 0.5) / BUCKET); i++)
-        for (let k = Math.floor((r[1] - 0.5) / BUCKET); k <= Math.floor((r[3] + 0.5) / BUCKET); k++) {
+      for (let i = Math.floor((r[0] - INDOOR_MARGIN) / BUCKET); i <= Math.floor((r[2] + INDOOR_MARGIN) / BUCKET); i++)
+        for (let k = Math.floor((r[1] - INDOOR_MARGIN) / BUCKET); k <= Math.floor((r[3] + INDOOR_MARGIN) / BUCKET); k++) {
           const key = i * 4096 + k;
           this.buckets.set(key, [...(this.buckets.get(key) ?? []), r]);
         }
@@ -254,7 +263,7 @@ class Landmarks {
 
   private indoors(p: Pt): boolean {
     const near = this.buckets.get(Math.floor(p.x / BUCKET) * 4096 + Math.floor(p.z / BUCKET));
-    return !!near && near.some((r) => distToRect(r, p) < 0.5);
+    return !!near && near.some((r) => distToRect(r, p) < INDOOR_MARGIN);
   }
 
   zoneAt(level: number, p: Pt): string | null {

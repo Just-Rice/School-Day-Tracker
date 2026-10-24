@@ -202,6 +202,18 @@ describe('buildDirections on the real maps', () => {
     expect(texts.some((t) => /back inside/.test(t))).toBe(true);
   });
 
+  it("doesn't call a hallway outside where the straightened route cuts a corner", () => {
+    // the route out of 304 stays in the 300s hallway; its straightened first leg cuts the corner
+    // past the footprint's edge, which used to read "Start outside Room 304 | Walk 10 m outside"
+    for (const [a, b] of [['304', '1007'], ['403', 'Aux Gym']]) {
+      const from = cms.rooms.find((r) => r.key === a)!;
+      const to = cms.rooms.find((r) => r.key === b)!;
+      const rt = routeBetween(cms.grid, from, to)!;
+      const texts = buildDirections(rt, cms.data, cms.rooms, { fromLabel: from.title, toRoom: to, orientation: cms.o }).steps.map((s) => s.text);
+      expect(texts.join(' | ')).not.toMatch(/outside|back inside/);
+    }
+  });
+
   it.each([
     ['hsn', hsn],
     ['cms', cms],
