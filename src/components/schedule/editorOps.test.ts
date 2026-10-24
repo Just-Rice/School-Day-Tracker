@@ -24,6 +24,7 @@ import {
   setBellDay,
   toWeekdayCycle,
   uniqueId,
+  renamesBack,
 } from './editorOps';
 
 function sched(): SchoolSchedule {
@@ -240,5 +241,28 @@ describe('carrying renames over to classes and day changes', () => {
     expect(names('2026-09-08')).toEqual(['Math', '-']); // A
     expect(resolveDay(s, '2026-09-09', ov).bell?.id).toBe('half');
     expect(names('2026-09-11')).toEqual(['PE']); // DB
+  });
+});
+
+describe('renamesBack (reset to the school schedule)', () => {
+  const school = (): SchoolSchedule => ({
+    schoolId: 'hsn',
+    schoolYear: '2026-2027',
+    cycle: { mode: 'rotation', days: [{ id: 'A', name: 'A Day' }, { id: 'B', name: 'B Day' }] },
+    periods: [{ id: '1', name: 'Period 1' }, { id: '2', name: 'Period 2' }],
+    bells: [{ id: 'regular', name: 'Regular day', days: {} }],
+    calendar: { firstDay: '2026-09-02', lastDay: '2027-06-17', noSchool: [], specialDays: [] },
+  });
+
+  it('maps renamed ids back by name, then by position, and leaves added ids alone', () => {
+    const custom = school();
+    custom.periods = [{ id: 'P2', name: 'Period 2' }, { id: 'X', name: 'First block' }, { id: 'extra', name: 'Zero hour' }];
+    custom.cycle.days = [{ id: 'A', name: 'A Day' }, { id: 'BB', name: 'B Day' }];
+    custom.bells = [{ id: 'reg', name: 'Normal', days: {} }];
+    expect(renamesBack(custom, school())).toEqual({ period: { P2: '2', X: '1' }, cycleDay: { BB: 'B' }, bell: { reg: 'regular' } });
+  });
+
+  it('maps nothing when no ids were renamed', () => {
+    expect(renamesBack(school(), school())).toEqual({ period: {}, cycleDay: {}, bell: {} });
   });
 });

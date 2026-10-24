@@ -65,6 +65,8 @@ export interface SchoolCalendar {
   anchor?: { date: ISODate; cycleDay: string };
   noSchool: NoSchoolDay[];
   specialDays: SpecialDay[];
+  /** when each term is in session (inclusive); classes with a term listed here only meet then */
+  terms?: { id: Term; start: ISODate; end: ISODate }[];
 }
 
 export interface SchoolSchedule {
@@ -93,6 +95,8 @@ export interface DayInfo {
   slots: BellSlot[];
   /** names of special/override notes for the day */
   notes: string[];
+  /** terms the calendar defines that aren't in session on this date (classes in them don't meet) */
+  offTerms?: Term[];
 }
 
 /** Per-user changes to a single date, e.g. a snow day or "today is actually Day 3" */
@@ -158,7 +162,7 @@ export interface CustomField {
   value: string;
 }
 
-export type Term = 'full' | 'S1' | 'S2' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+export type Term = 'full' | 'S1' | 'S2' | 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'T1' | 'T2' | 'T3';
 export type CourseLevel = 'CP' | 'Honors' | 'AP' | 'Accelerated' | 'Other';
 
 export interface ClassInfo {

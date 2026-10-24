@@ -28,12 +28,16 @@ const KNOWN_KEYS = {
   period: ['id', 'name', 'kind'],
   bell: ['id', 'name', 'days'],
   slot: ['period', 'label', 'start', 'end', 'kind'],
-  calendar: ['firstDay', 'lastDay', 'anchor', 'noSchool', 'specialDays'],
+  calendar: ['firstDay', 'lastDay', 'anchor', 'noSchool', 'specialDays', 'terms'],
   anchor: ['date', 'cycleDay'],
+  term: ['id', 'start', 'end'],
   noSchool: ['date', 'end', 'name'],
   specialDay: ['date', 'name', 'bell', 'cycleDay', 'advance'],
   source: ['urls', 'note', 'verified', 'retrieved'],
 };
+
+/** the Term ids of src/types.ts other than 'full' */
+const TERM_IDS = ['S1', 'S2', 'Q1', 'Q2', 'Q3', 'Q4', 'T1', 'T2', 'T3'];
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isText = (v) => typeof v === 'string' && v.trim() !== '';
@@ -256,6 +260,28 @@ export function validateSchedule(s, opts = {}) {
       }
     }
 
+    if (cal.terms !== undefined) {
+      if (!Array.isArray(cal.terms)) err('calendar.terms must be an array of { id, start, end }');
+      else {
+        const seen = new Set();
+        cal.terms.forEach((tm, i) => {
+          const at = `calendar.terms[${i}]${isObj(tm) && typeof tm.id === 'string' ? ` ${tm.id}` : ''}`;
+          if (!isObj(tm)) return err(`${at} must be an object { id, start, end }`);
+          unknownKeys(tm, 'term', at);
+          if (!TERM_IDS.includes(tm.id)) err(`${at}: id must be one of ${TERM_IDS.join(', ')}`);
+          else if (seen.has(tm.id)) err(`${at}: term ${tm.id} is listed twice`);
+          seen.add(tm.id);
+          const a = parseDate(tm.start), b = parseDate(tm.end);
+          if (a === null) err(`${at}: start ${JSON.stringify(tm.start)} is not a valid "YYYY-MM-DD" date`);
+          if (b === null) err(`${at}: end ${JSON.stringify(tm.end)} is not a valid "YYYY-MM-DD" date`);
+          if (a !== null && b !== null) {
+            if (b < a) err(`${at}: end ${tm.end} is before start ${tm.start}`);
+            else if (yearOk && (a < first || b > last)) err(`${at}: ${tm.start} to ${tm.end} is outside the school year ${cal.firstDay} to ${cal.lastDay}`);
+          }
+        });
+      }
+    }
+
     if (yearOk) {
       const perMonth = new Map();
       let total = 0;
@@ -377,6 +403,8 @@ function selfTest() {
     ['two special days on one date', (s) => s.calendar.specialDays.push({ date: '2026-11-25', name: 'Again' }), 'already uses'],
     ['anchor with unknown cycle day', (s) => (s.calendar.anchor.cycleDay = 'Q'), 'anchor.cycleDay "Q"'],
     ['anchor on a weekend', (s) => (s.calendar.anchor.date = '2026-09-05'), 'not a school day'],
+    ['unknown term id', (s) => (s.calendar.terms = [{ id: 'S3', start: '2026-09-08', end: '2027-01-29' }]), 'id must be one of'],
+    ['term ending before it starts', (s) => (s.calendar.terms = [{ id: 'S1', start: '2027-01-29', end: '2026-09-08' }]), 'is before start'],
     ['verified without urls', (s) => ((s.source.verified = true), (s.source.urls = [])), 'urls is empty'],
     ['non-http url', (s) => (s.source.urls = ['ftp://x']), 'not an http(s) link'],
   ];

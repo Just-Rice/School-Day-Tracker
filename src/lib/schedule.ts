@@ -1,7 +1,7 @@
 // The schedule engine: turns a SchoolSchedule (bells + calendar + cycle) and the user's day
 // overrides into what happens on a given date. Everything here is pure so it can be tested and
 // reused by any page; useSchedule() wires it to the user's profile.
-import type { Bell, BellSlot, ClassInfo, ClassRoom, ClockTime, CycleDay, DayInfo, DayOverride, ISODate, SchoolSchedule, SlotKind, SpecialDay } from '../types';
+import type { Bell, BellSlot, ClassInfo, ClassRoom, ClockTime, CycleDay, DayInfo, DayOverride, ISODate, SchoolSchedule, SlotKind, SpecialDay, Term } from '../types';
 import { addDays, daysBetween, formatTime, isWeekend, parseISODate, toISODate, toMinutes, weekday } from './dates';
 
 /** cycle day ids used by 'weekday' mode, indexed like Date.getDay() */
@@ -207,7 +207,9 @@ function buildResolver(schedule: SchoolSchedule, overrides: Record<ISODate, DayO
         continue;
       }
       let a: number | undefined;
-      if (anchorAt >= 0 && !anchored && i >= anchorAt && i <= y1) {
+      // The anchor only seeds the schedule's own count. In the user's walk it isn't forced again:
+      // after a snow day before it, re-forcing it would skip a cycle day at the anchor.
+      if (!withOverrides && anchorAt >= 0 && !anchored && i >= anchorAt && i <= y1) {
         a = cycleIndex(anchor!.cycleDay);
         anchored = true;
       }
@@ -283,7 +285,8 @@ function computeDay(r: Resolver, date: ISODate): DayInfo {
   const slots = bell ? sortSlots(((cycleDay && bell.days[cycleDay.id]) ?? bell.days['*'] ?? []).filter(hasTimes)) : [];
   const notes: string[] = [];
   for (const n of [sp?.name, ov?.name]) if (n && !notes.includes(n)) notes.push(n);
-  return { date, isSchoolDay: true, cycleDay, bell, slots, notes };
+  const offTerms = (schedule.calendar?.terms ?? []).filter((t) => isISODate(t.start) && isISODate(t.end) && (date < t.start || date > t.end)).map((t) => t.id);
+  return { date, isSchoolDay: true, cycleDay, bell, slots, notes, ...(offTerms.length && { offTerms }) };
 }
 
 /** The first school day after `from` (exclusive), looking ahead at most `maxDays` days. */
@@ -395,8 +398,10 @@ export interface Meeting {
 }
 
 /** whether `cls` meets in `slot` on a day with cycle day `cycleDayId` */
-export function meetsIn(cls: ClassInfo, slot: BellSlot, cycleDayId: string | undefined): boolean {
+export function meetsIn(cls: ClassInfo, slot: BellSlot, cycleDayId: string | undefined, offTerms?: Term[]): boolean {
   if (cls.archived || !cls.periods?.includes(slot.period)) return false;
+  // a term class meets only while its term is in session (when the calendar says when that is)
+  if (cls.term && offTerms?.includes(cls.term)) return false;
   return !cls.days?.length || (cycleDayId !== undefined && cls.days.includes(cycleDayId));
 }
 
@@ -415,7 +420,7 @@ export function classesOnDay(day: DayInfo, classes: ClassInfo[]): Meeting[] {
   return day.slots.map((slot) => {
     let cls: ClassInfo | undefined;
     for (const c of classes) {
-      if (!meetsIn(c, slot, cd)) continue;
+      if (!meetsIn(c, slot, cd, day.offTerms)) continue;
       if (!cls || (!cls.days?.length && c.days?.length)) cls = c;
     }
     return cls ? { slot, cls, room: roomOn(cls, cd) } : { slot };

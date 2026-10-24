@@ -195,6 +195,14 @@
       { "date": "2027-05-27", "name": "No homework night for periods 2 and 6 (Memorial Day weekend)" },
       { "date": "2027-06-01", "name": "Rotation resyncs after emergency closing day #3", "cycleDay": "C" },
       { "date": "2027-06-17", "name": "Last day of school · Early dismissal · Graduation", "bell": "early" }
+    ],
+    "terms": [
+      { "id": "S1", "start": "2026-09-02", "end": "2027-01-25" },
+      { "id": "S2", "start": "2027-01-26", "end": "2027-06-17" },
+      { "id": "Q1", "start": "2026-09-02", "end": "2026-11-09" },
+      { "id": "Q2", "start": "2026-11-10", "end": "2027-01-25" },
+      { "id": "Q3", "start": "2027-01-26", "end": "2027-04-09" },
+      { "id": "Q4", "start": "2027-04-12", "end": "2027-06-17" }
     ]
   },
   "source": {

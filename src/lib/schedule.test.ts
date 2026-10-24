@@ -311,7 +311,7 @@ describe('resolveDay: rotation', () => {
     expect(cycleRun(s, '2026-09-08', 4)).toEqual(['D3', 'D3', 'D4', 'D1']);
   });
 
-  describe('a day change before the anchor only moves that date and later ones', () => {
+  describe('a day change before the anchor only moves that date and later ones, and the rotation keeps going', () => {
     // the anchor agrees with plain counting from 9/8 = D1; 9/21 is a day off
     const anchored = () => {
       const s = rotation();
@@ -323,18 +323,19 @@ describe('resolveDay: rotation', () => {
     it('a cycle-day override', () => {
       const s = anchored();
       expect(cycleRun(s, '2026-09-08', 13)).toEqual(plain);
-      // 9/16 is "really" Day 1: 9/8..9/15 keep their days, the rotation goes on from 9/16 until the anchor
-      expect(cycleRun(s, '2026-09-08', 14, { '2026-09-16': { cycleDay: 'D1' } })).toEqual(['D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D1', 'D2']);
+      // 9/16 is "really" Day 1: 9/8..9/15 keep their days and the rotation goes on from 9/16, past
+      // the anchor (re-forcing it would skip or repeat a day there)
+      expect(cycleRun(s, '2026-09-08', 14, { '2026-09-16': { cycleDay: 'D1' } })).toEqual(['D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D3', 'D4']);
     });
 
     it('a snow day', () => {
       const s = anchored();
       const ov = { '2026-09-15': { noSchool: true, name: 'Snow day' } };
-      // 9/16 takes the day 9/15 would have had
-      expect(cycleRun(s, '2026-09-08', 12, ov)).toEqual(['D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D3', 'D1']);
+      // 9/16 takes the day 9/15 would have had, and every later day moves back one
+      expect(cycleRun(s, '2026-09-08', 12, ov)).toEqual(['D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D3', 'D4', 'D1', 'D2', 'D3', 'D4']);
       expect(resolveDay(s, '2026-09-14', ov).cycleDay?.id).toBe('D1');
       expect(resolveDay(s, '2026-09-16', ov).cycleDay?.id).toBe('D2');
-      expect(resolveDay(s, '2026-09-25', ov).cycleDay?.id).toBe('D1');
+      expect(resolveDay(s, '2026-09-25', ov).cycleDay?.id).toBe('D4');
     });
 
     it('a make-up day', () => {
@@ -343,7 +344,7 @@ describe('resolveDay: rotation', () => {
       expect(resolveDay(s, '2026-09-11', ov).cycleDay?.id).toBe('D4');
       expect(resolveDay(s, '2026-09-12', ov).cycleDay?.id).toBe('D1');
       expect(resolveDay(s, '2026-09-14', ov).cycleDay?.id).toBe('D2');
-      expect(resolveDay(s, '2026-09-25', ov).cycleDay?.id).toBe('D1');
+      expect(resolveDay(s, '2026-09-25', ov).cycleDay?.id).toBe('D2');
     });
 
     it('a snow day on the first day of school', () => {
@@ -361,6 +362,16 @@ describe('resolveDay: rotation', () => {
       expect(letters({ '2026-10-17': { noSchool: false } })).toEqual(before);
       // a December snow day: the next day takes its letter
       expect(resolveDay(hsn, '2026-12-02', { '2026-12-01': { noSchool: true } }).cycleDay?.id).toBe(resolveDay(hsn, '2026-12-01').cycleDay?.id);
+    });
+
+    it('a snow day before the HSN anchor never skips a letter at the anchor', () => {
+      const hsn = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../public/schools/hsn/schedule.json'), 'utf8')) as SchoolSchedule;
+      const ov = { '2027-01-07': { noSchool: true }, '2027-03-29': { noSchool: false } };
+      const run = ['2027-02-05', '2027-02-08', '2027-02-09', '2027-02-10', '2027-02-11'].map((d) => resolveDay(hsn, d, ov).cycleDay?.id);
+      // before the fix: C, D, B (A skipped), C
+      expect(run).toEqual(['B', 'C', 'D', 'A', 'B']);
+      // the official letters without day changes are unchanged
+      expect(['2026-09-02', '2026-10-08', '2027-02-10', '2027-05-27'].map((d) => resolveDay(hsn, d).cycleDay?.id)).toEqual(['A', 'A', 'B', 'A']);
     });
   });
 
@@ -784,5 +795,27 @@ describe('validateSchedule', () => {
     const s = rotation();
     s.cycle.mode = 'weekday';
     expect(validateSchedule(s)[0]).toMatch(/weekday mode/);
+  });
+});
+
+describe('class terms', () => {
+  const hsn = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../public/schools/hsn/schedule.json'), 'utf8')) as SchoolSchedule;
+  // Drivers Ed (fall) and Health (spring) share period 7; alphabetically Drivers Ed comes first
+  const drivers = cls({ id: 'drivers', name: 'DriversEd', periods: ['7'], term: 'S1' });
+  const health = cls({ id: 'health', name: 'Health', periods: ['7'], term: 'S2' });
+  const inP7 = (date: ISODate) => classesOnDay(resolveDay(hsn, date), [drivers, health]).find((m) => m.slot.period === '7')?.cls?.name;
+
+  it('puts the class whose term is in session in a shared period', () => {
+    expect(inP7('2026-10-13')).toBe('DriversEd'); // fall, D Day
+    expect(inP7('2027-03-02')).toBe('Health'); // spring, B Day
+    // last day of S1 and first day of S2
+    expect(inP7('2027-01-25')).toBe('DriversEd');
+    expect(inP7('2027-01-26')).toBe('Health');
+  });
+
+  it('lists the terms not in session on a day, and ignores terms the calendar does not define', () => {
+    expect(resolveDay(hsn, '2027-03-02').offTerms?.sort()).toEqual(['Q1', 'Q2', 'Q4', 'S1']);
+    const trimester = cls({ id: 't', periods: ['7'], term: 'T1' });
+    expect(classesOnDay(resolveDay(hsn, '2027-03-02'), [trimester]).find((m) => m.slot.period === '7')?.cls?.id).toBe('t');
   });
 });

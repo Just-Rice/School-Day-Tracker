@@ -78,8 +78,9 @@ export default function WeekPage() {
   const w = params.get('w');
   const start = isISODate(w) ? startOfWeek(w) : thisWeek;
   const go = (s: ISODate) => setParams(s === thisWeek ? {} : { w: s }, { replace: true });
-  const dates = [0, 1, 2, 3, 4].map((i) => addDays(start, i));
-  const rangeLabel = `${formatDate(dates[0], { weekday: false })} – ${formatDate(dates[4], { weekday: false })}`;
+  // Mon-Fri, plus Saturday/Sunday when they're school days (a make-up day), so the rotation reads right
+  const dates = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(start, i)).filter((d, i) => i < 5 || getDay(d).isSchoolDay);
+  const rangeLabel = `${formatDate(dates[0], { weekday: false })} – ${formatDate(dates[dates.length - 1], { weekday: false })}`;
   const todayDay = getDay(today);
   // the rotation grid only says something when days differ: per-day bell times or A/B-day classes
   const rotation =
@@ -118,7 +119,7 @@ export default function WeekPage() {
               </Button>
             </div>
           </div>
-          <div className="week-grid">
+          <div className="week-grid" style={{ '--week-days': dates.length } as React.CSSProperties}>
             {dates.map((d) => (
               <WeekDay key={d} day={getDay(d)} today={today} schedule={schedule} classes={classes} clock={profile.clock} />
             ))}

@@ -334,8 +334,8 @@ above are spelled out in each file's `source.note`, which the app shows under "A
 
 - **Snow day, delayed opening, "today is actually a C Day":** open **Schedule**, then **Day changes**. Pick the date and
   choose no school, a different bell (for example "90-minute delayed opening"), or the cycle day. The rotation continues
-  from a day whose letter you set. A day change only moves that date and the days after it, up to the next date the file
-  sets a letter on (a resync day or the anchor). Earlier days keep their letters. A make-up day ("School on a day off") can
+  from a day whose letter you set. A day change only moves that date and the days after it, up to the next resync day the
+  file sets a letter on (the anchor only fixes where the year starts, so a snow day before it never skips a letter there). Earlier days keep their letters. A make-up day ("School on a day off") can
   also be after the last day of school or before the first; it continues the rotation from the nearest school day.
 - **Different bell times or periods:** open **Schedule** and press **Customize**. This makes your own copy of the
   school's schedule, where you can edit periods, bells, special days and the calendar. It is saved to your account (or
@@ -355,6 +355,10 @@ above are spelled out in each file's `source.note`, which the app shows under "A
      - `advance: false` makes a school day that doesn't move the rotation.
      - `name` shows as a note.
    - `calendar.anchor` is one known `{ date, cycleDay }`. The rotation is counted forward and backward from it.
+   - `calendar.terms` lists `{ id, start, end }` for the terms the school uses (HSN: `S1`, `S2`, `Q1`-`Q4` from the
+     marking periods; CMS: trimesters `T1`-`T3`). A class set to one of these terms only shows on Today and Week while
+     its term is in session, so a fall and a spring class can share a period. Terms the calendar doesn't list are
+     treated as all year.
    - Update `source.urls`, `source.note` and `source.retrieved`. Set `source.verified` to `true` only when the times come
      from an official document for that school year.
 2. Run the validator:

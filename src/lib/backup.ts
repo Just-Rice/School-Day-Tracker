@@ -139,7 +139,7 @@ const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const SCHOOL_IDS: readonly SchoolId[] = ['hsn', 'cms', 'other'];
 const MAP_SCHOOL_IDS = SCHOOL_IDS.filter((id) => SCHOOLS[id].hasMap);
-const TERMS: readonly Term[] = ['full', 'S1', 'S2', 'Q1', 'Q2', 'Q3', 'Q4'];
+const TERMS: readonly Term[] = ['full', 'S1', 'S2', 'Q1', 'Q2', 'Q3', 'Q4', 'T1', 'T2', 'T3'];
 const LEVELS: readonly CourseLevel[] = ['CP', 'Honors', 'AP', 'Accelerated', 'Other'];
 const TYPES: readonly AssignmentType[] = ['homework', 'test', 'quiz', 'project', 'essay', 'reading', 'lab', 'other'];
 const PRIORITIES: readonly Priority[] = ['low', 'medium', 'high'];
@@ -339,6 +339,7 @@ function customSchedule(v: unknown, dropped: { n: number }): SchoolSchedule | un
       : undefined,
   );
   const anchor = isObj(cal.anchor) && isStr(cal.anchor.date) && isStr(cal.anchor.cycleDay) ? { date: cal.anchor.date, cycleDay: cal.anchor.cycleDay } : undefined;
+  const terms = keep(cal.terms, (x) => (isObj(x) && oneOf(TERMS, x.id) && isStr(x.start) && isStr(x.end) ? { id: x.id, start: x.start, end: x.end } : undefined));
   if (cal.anchor !== undefined && !anchor) dropped.n++;
   const src = isObj(v.source) ? v.source : undefined;
   return clean({
@@ -347,7 +348,7 @@ function customSchedule(v: unknown, dropped: { n: number }): SchoolSchedule | un
     cycle: { mode: v.cycle.mode === 'weekday' ? 'weekday' : 'rotation', days: cycleDays },
     periods,
     bells,
-    calendar: { firstDay: str(cal.firstDay) ?? '', lastDay: str(cal.lastDay) ?? '', anchor, noSchool, specialDays },
+    calendar: { firstDay: str(cal.firstDay) ?? '', lastDay: str(cal.lastDay) ?? '', anchor, noSchool, specialDays, ...(terms.length && { terms }) },
     source: src && {
       urls: strList(src.urls).filter((u) => /^https?:\/\//i.test(u)),
       note: str(src.note),

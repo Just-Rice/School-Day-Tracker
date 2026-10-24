@@ -6,7 +6,7 @@ import CalendarView from '../components/schedule/CalendarView';
 import DayOverridesCard from '../components/schedule/DayOverridesCard';
 import ScheduleEditor from '../components/schedule/ScheduleEditor';
 import { DayChips } from '../components/schedule/bits';
-import { prepareForSave, renameInClass, renameInOverrides } from '../components/schedule/editorOps';
+import { NO_RENAMES, prepareForSave, renameInClass, renameInOverrides, renamesBack } from '../components/schedule/editorOps';
 import { useConfirm } from '../components/schedule/useConfirm';
 import { useData } from '../data/DataProvider';
 import { clean } from '../data/store';
@@ -79,11 +79,37 @@ export default function SchedulePage() {
   const reset = () =>
     ask({
       title: "Reset to the school's schedule?",
-      body: "Your edits to periods, bell times and the calendar will be lost. Your day changes (snow days and such) are kept.",
+      body: "Your edits to periods, bell times and the calendar will be lost. Your day changes (snow days and such) are kept, and classes and day changes using IDs you renamed go back to the school's IDs.",
       confirmLabel: 'Reset',
       run: () => {
         setEditing(false);
-        void saveProfile({ customSchedule: undefined }).catch(() => setProblem('Could not reset the schedule.'));
+        void (async () => {
+          setProblem(null);
+          const custom = profile.customSchedule;
+          let base: SchoolSchedule;
+          try {
+            base = await loadSchoolSchedule(profile.schoolId);
+          } catch {
+            return setProblem("Could not load the school's schedule. Check your connection and try again.");
+          }
+          // classes and day changes were moved to renamed ids when the custom schedule was saved
+          const back = custom ? renamesBack(custom, base) : NO_RENAMES;
+          const dayOverrides = renameInOverrides(profile.dayOverrides, back);
+          try {
+            await saveProfile({ customSchedule: undefined, ...(dayOverrides !== profile.dayOverrides && { dayOverrides }) });
+          } catch {
+            return setProblem('Could not reset the schedule.');
+          }
+          const moved = classes.map((c) => renameInClass(c, back));
+          try {
+            await Promise.all(moved.filter((c, i) => c !== classes[i]).map((c) => saveClass(c)));
+          } catch {
+            return setProblem("The schedule was reset, but some classes could not be moved back to the school's IDs. Check their periods and days.");
+          }
+          const known = new Set(base.periods.map((p) => p.id));
+          const lost = moved.filter((c) => !c.archived && c.periods.length > 0 && !c.periods.some((p) => known.has(p)));
+          if (lost.length) setProblem(`The school's schedule has none of the periods of ${lost.map((c) => c.name).join(', ')}. Edit ${lost.length === 1 ? 'that class' : 'those classes'} to pick a period.`);
+        })();
       },
     });
 

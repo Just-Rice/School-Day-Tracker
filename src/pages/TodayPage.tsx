@@ -72,7 +72,8 @@ export default function TodayPage() {
                 title={
                   <>
                     {relativeDay(upcoming.day.date, today)}
-                    <span className="muted card-sub"> · {formatDate(upcoming.day.date)}</span>
+                    {/* relativeDay is already the date when it's a week or more away */}
+                    {relativeDay(upcoming.day.date, today) !== formatDate(upcoming.day.date) && <span className="muted card-sub"> · {formatDate(upcoming.day.date)}</span>}
                   </>
                 }
                 actions={<DayChips day={upcoming.day} schedule={schedule} />}

@@ -101,6 +101,11 @@
       { "date": "2027-02-11", "name": "No homework night" },
       { "date": "2027-03-19", "name": "No homework night (spring recess)" },
       { "date": "2027-06-17", "name": "Last day of school · Early dismissal", "bell": "early" }
+    ],
+    "terms": [
+      { "id": "T1", "start": "2026-09-02", "end": "2026-12-02" },
+      { "id": "T2", "start": "2026-12-03", "end": "2027-03-11" },
+      { "id": "T3", "start": "2027-03-12", "end": "2027-06-17" }
     ]
   },
   "source": {

@@ -108,7 +108,7 @@ export const LEVEL_COLORS: Partial<Record<CourseLevel, string>> = {
   AP: '#a23fbf',
 };
 
-export const TERMS: Term[] = ['full', 'S1', 'S2', 'Q1', 'Q2', 'Q3', 'Q4'];
+export const TERMS: Term[] = ['full', 'S1', 'S2', 'Q1', 'Q2', 'Q3', 'Q4', 'T1', 'T2', 'T3'];
 
 export const TERM_LABELS: Record<Term, string> = {
   full: 'Full year',
@@ -118,6 +118,9 @@ export const TERM_LABELS: Record<Term, string> = {
   Q2: 'Quarter 2',
   Q3: 'Quarter 3',
   Q4: 'Quarter 4',
+  T1: 'Trimester 1',
+  T2: 'Trimester 2',
+  T3: 'Trimester 3',
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -516,7 +519,7 @@ export function nextMeeting(c: ClassInfo, getDay: (d: ISODate) => DayInfo, today
     if (!day.isSchoolDay) continue;
     const cd = day.cycleDay?.id;
     for (const slot of sortSlots(day.slots)) {
-      if (!meetsIn(c, slot, cd)) continue;
+      if (!meetsIn(c, slot, cd, day.offTerms)) continue;
       if (k === 0 && toMinutes(slot.end) <= minutes) continue;
       return { date, day, slot, room: roomOn(c, cd), now: k === 0 && toMinutes(slot.start) <= minutes };
     }

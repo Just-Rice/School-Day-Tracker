@@ -90,4 +90,23 @@ describe('SchedulePage', () => {
     expect(saved.customSchedule?.periods[0].id).toBe('P1');
     expect(saved.dayOverrides).toEqual({ '2026-10-21': { bell: 'half' }, '2026-10-22': { noSchool: true } });
   });
+
+  it("moves classes and day changes back to the school's ids on reset", async () => {
+    // a custom schedule saved after renaming period 1 -> P1, A Day -> DA, regular -> reg
+    const custom = schedule('cms');
+    custom.periods = [{ id: 'P1', name: 'Period 1' }];
+    custom.cycle.days = [{ id: 'DA', name: 'A Day' }, { id: 'B', name: 'B Day' }];
+    custom.bells = [{ id: 'reg', name: 'Regular day', days: { '*': [{ period: 'P1', start: '08:00', end: '08:50' }] } }];
+    h.profile = { ...base, customSchedule: custom, dayOverrides: { '2026-10-21': { cycleDay: 'DA', bell: 'reg' }, '2026-10-22': { noSchool: true } } };
+    const math: ClassInfo = { id: 'm', name: 'Math', periods: ['P1'], days: ['DA'], altRooms: [{ days: ['DA'], room: { label: 'Lab' } }], teacher: { name: 'T' }, room: { label: '1' }, term: 'full', color: '#123456', links: [], customFields: [], createdAt: 0, updatedAt: 0 };
+    h.classes = [math];
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /Reset to the school/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset', hidden: true }));
+    await waitFor(() => expect(h.saveClass).toHaveBeenCalledTimes(1));
+    expect(h.saveClass.mock.calls[0][0]).toMatchObject({ id: 'm', periods: ['1'], days: ['A'], altRooms: [{ days: ['A'] }] });
+    const saved = h.saveProfile.mock.calls[0][0] as Partial<Profile>;
+    expect('customSchedule' in saved && saved.customSchedule === undefined).toBe(true);
+    expect(saved.dayOverrides).toEqual({ '2026-10-21': { cycleDay: 'A', bell: 'regular' }, '2026-10-22': { noSchool: true } });
+  });
 });

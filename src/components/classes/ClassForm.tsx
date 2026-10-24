@@ -169,6 +169,10 @@ export default function ClassForm({
   };
 
   const dayChoices: Choice[] = cycleDays.map((d) => ({ value: d.id, label: cycleDayName(d.id, schedule) }));
+  // the school's own terms when its calendar has them (HSN semesters/quarters, CMS trimesters), and
+  // the class's current term in any case so it isn't lost
+  const schoolTerms = schedule?.calendar.terms?.map((t) => t.id) ?? [];
+  const termChoices = schoolTerms.length ? TERMS.filter((t) => t === 'full' || t === c.term || schoolTerms.includes(t)) : TERMS;
   const errorCount = Object.keys(shown).length;
 
   let when: ReactNode;
@@ -282,7 +286,7 @@ export default function ClassForm({
           </Field>
           <Field label="Term">
             <select id={id('term')} value={c.term} onChange={(e) => set({ term: e.target.value as Term })}>
-              {TERMS.map((t) => (
+              {termChoices.map((t) => (
                 <option key={t} value={t}>
                   {TERM_LABELS[t]}
                 </option>

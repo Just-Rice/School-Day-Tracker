@@ -218,6 +218,42 @@ export function recordRename(r: Renames, saved: SchoolSchedule, kind: IdKind, fr
   return { ...r, [kind]: map };
 }
 
+function itemsOf(s: SchoolSchedule, kind: IdKind): { id: string; name: string }[] {
+  if (kind === 'period') return s.periods;
+  if (kind === 'cycleDay') return s.cycle.days;
+  return s.bells;
+}
+
+/**
+ * The renames that take `custom`'s ids back to `base`'s, for resetting to the school's schedule
+ * after ids were renamed (the renames themselves aren't stored). Each custom id `base` doesn't have
+ * maps to one of `base`'s ids that `custom` doesn't have: the one with the same name, else the
+ * next one left over, in order. Custom ids with nothing left to map to stay as they are.
+ */
+export function renamesBack(custom: SchoolSchedule, base: SchoolSchedule): Renames {
+  const out: Renames = { period: {}, cycleDay: {}, bell: {} };
+  const norm = (n: string) => n.trim().toLowerCase();
+  for (const kind of ['period', 'cycleDay', 'bell'] as IdKind[]) {
+    const theirs = itemsOf(base, kind);
+    const mineIds = new Set(itemsOf(custom, kind).map((x) => x.id));
+    const theirIds = new Set(theirs.map((x) => x.id));
+    const mine = itemsOf(custom, kind).filter((x) => !theirIds.has(x.id));
+    const free = theirs.filter((x) => !mineIds.has(x.id));
+    const take = (x: { id: string }, b: (typeof free)[number] | undefined) => {
+      if (!b) return;
+      out[kind][x.id] = b.id;
+      free.splice(free.indexOf(b), 1);
+    };
+    const unnamed = mine.filter((x) => {
+      const b = free.find((f) => norm(f.name) === norm(x.name));
+      take(x, b);
+      return !b;
+    });
+    for (const x of unnamed) take(x, free[0]);
+  }
+  return out;
+}
+
 const renamed = (id: string, map: Record<string, string>) => (Object.hasOwn(map, id) ? map[id] : id);
 
 function renameIds(ids: string[] | undefined, map: Record<string, string>): string[] | undefined {
