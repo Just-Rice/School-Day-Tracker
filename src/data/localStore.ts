@@ -1,5 +1,5 @@
-import type { Assignment, ClassInfo, Profile } from '../types';
-import { clean, type DataStore, type Unsubscribe } from './store';
+import type { Assignment, ClassInfo, ISODate, Profile } from '../types';
+import { applyChanged, applyChangedDates, clean, type DataStore, type Unsubscribe } from './store';
 
 const KEY = 'sdt:v1:';
 
@@ -50,17 +50,26 @@ export class LocalStore implements DataStore {
   subscribeProfile(cb: (p: Profile | null) => void): Unsubscribe {
     return this.on('profile', () => cb(this.read<Profile | null>('profile', null)));
   }
-  async saveProfile(p: Partial<Profile>) {
+  async saveProfile(p: Partial<Profile>, changedDates?: readonly ISODate[]) {
     const cur = this.read<Partial<Profile>>('profile', {});
-    this.write('profile', { ...cur, ...p, updatedAt: Date.now() });
+    const next = { ...cur, ...p, updatedAt: Date.now() };
+    if (changedDates && p.dayOverrides) next.dayOverrides = applyChangedDates(cur.dayOverrides, p.dayOverrides, changedDates);
+    this.write('profile', next);
+  }
+  /** `item` written over the stored one with the same id, or just its `changed` fields */
+  private put<T extends { id: string }>(k: string, item: T, changed?: readonly string[]) {
+    const all = this.read<T[]>(k, []);
+    const i = all.findIndex((x) => x.id === item.id);
+    if (i < 0) all.push(item);
+    else all[i] = changed ? applyChanged(all[i], item, changed) : item;
+    this.write(k, all);
   }
 
   subscribeClasses(cb: (c: ClassInfo[]) => void): Unsubscribe {
     return this.on('classes', () => cb(this.read<ClassInfo[]>('classes', [])));
   }
-  async saveClass(c: ClassInfo) {
-    const all = this.read<ClassInfo[]>('classes', []).filter((x) => x.id !== c.id);
-    this.write('classes', [...all, c]);
+  async saveClass(c: ClassInfo, changed?: readonly string[]) {
+    this.put('classes', c, changed);
   }
   async deleteClass(id: string) {
     this.write('classes', this.read<ClassInfo[]>('classes', []).filter((x) => x.id !== id));
@@ -69,9 +78,8 @@ export class LocalStore implements DataStore {
   subscribeAssignments(cb: (a: Assignment[]) => void): Unsubscribe {
     return this.on('assignments', () => cb(this.read<Assignment[]>('assignments', [])));
   }
-  async saveAssignment(a: Assignment) {
-    const all = this.read<Assignment[]>('assignments', []).filter((x) => x.id !== a.id);
-    this.write('assignments', [...all, a]);
+  async saveAssignment(a: Assignment, changed?: readonly string[]) {
+    this.put('assignments', a, changed);
   }
   async deleteAssignment(id: string) {
     this.write('assignments', this.read<Assignment[]>('assignments', []).filter((x) => x.id !== id));

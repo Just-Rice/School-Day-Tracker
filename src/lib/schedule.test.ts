@@ -15,11 +15,13 @@ import {
   meetingTimes,
   nextSchoolDay,
   normalizeSchedule,
+  overridesFor,
   resolveDay,
   rotationRows,
   slotKind,
   slotName,
   slotProgress,
+  stampOverrides,
   summarizeMeetingTimes,
   upcomingCalendar,
   validateSchedule,
@@ -817,5 +819,27 @@ describe('class terms', () => {
     expect(resolveDay(hsn, '2027-03-02').offTerms?.sort()).toEqual(['Q1', 'Q2', 'Q4', 'S1']);
     const trimester = cls({ id: 't', periods: ['7'], term: 'T1' });
     expect(classesOnDay(resolveDay(hsn, '2027-03-02'), [trimester]).find((m) => m.slot.period === '7')?.cls?.id).toBe('t');
+  });
+});
+
+describe('day changes and school switches', () => {
+  it('applies only the day changes made at the current school', () => {
+    const o = { '2026-10-14': { cycleDay: 'B', school: 'hsn' as const }, '2026-10-15': { noSchool: true }, '2026-10-16': { noSchool: true, school: 'cms' as const } };
+    expect(Object.keys(overridesFor(o, 'cms')).sort()).toEqual(['2026-10-15', '2026-10-16']);
+    expect(Object.keys(overridesFor(o, 'hsn')).sort()).toEqual(['2026-10-14', '2026-10-15']);
+    const plain = { '2026-10-15': { noSchool: true } };
+    expect(overridesFor(plain, 'cms')).toBe(plain);
+  });
+
+  it('marks day changes with the school being left, so they stop applying after the switch', () => {
+    const cms = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../public/schools/cms/schedule.json'), 'utf8')) as SchoolSchedule;
+    const made = { '2026-10-14': { cycleDay: 'B' } }; // made at HSN
+    const kept = stampOverrides(made, 'hsn');
+    expect(kept['2026-10-14'].school).toBe('hsn');
+    // at CMS the HSN change no longer flips the A/B rotation
+    const letters = (o: Record<ISODate, DayOverride>) => ['2026-10-14', '2026-10-15', '2026-10-16'].map((d) => resolveDay(cms, d, overridesFor(o, 'cms')).cycleDay?.id);
+    expect(letters(kept)).toEqual(letters({}));
+    expect(letters(made)).not.toEqual(letters({}));
+    expect(stampOverrides(kept, 'cms')).toBe(kept);
   });
 });

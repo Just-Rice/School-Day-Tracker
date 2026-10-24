@@ -16,6 +16,12 @@ const fs = vi.hoisted(() => {
     doc: (parent: Partial<Ref>, ...segs: string[]): Ref => ({ path: [parent.path, ...segs].filter(Boolean).join('/') }),
     collection: (parent: Partial<Ref>, ...segs: string[]): Ref => ({ path: [parent.path, ...segs].filter(Boolean).join('/') }),
     deleteField: () => DELETE,
+    FieldPath: class {
+      segments: string[];
+      constructor(...segments: string[]) {
+        this.segments = segments;
+      }
+    },
     setDoc: vi.fn(async (..._a: unknown[]) => {}),
     deleteDoc: vi.fn(async (..._a: unknown[]) => {}),
     getDocs: vi.fn(async (ref: Ref) => ({ docs: [{ ref: { path: ref.path + '/x1' } }, { ref: { path: ref.path + '/x2' } }] })),
@@ -35,6 +41,7 @@ vi.mock('firebase/firestore', () => ({
   doc: fs.doc,
   collection: fs.collection,
   deleteField: fs.deleteField,
+  FieldPath: fs.FieldPath,
   setDoc: fs.setDoc,
   deleteDoc: fs.deleteDoc,
   getDocs: fs.getDocs,
@@ -197,6 +204,28 @@ describe('createFirestoreStore', () => {
     expect(cData.teacher).toEqual({ name: 'Ms. Lee' });
     expect(cOpts).toBeUndefined();
     expect((fs.setDoc.mock.calls[1][0] as { path: string }).path).toBe('users/u1/assignments/a1');
+  });
+
+  it('writes only the changed fields of an existing item, deleting cleared ones', async () => {
+    const store = createFirestoreStore('u1');
+    const a = { ...makeAssignment('a1'), completedAt: undefined };
+    await store.saveAssignment(a, ['status', 'completedAt', 'updatedAt']);
+    const [ref, data, opts] = fs.setDoc.mock.calls[0] as [{ path: string }, Record<string, unknown>, { mergeFields: string[] }];
+    expect(ref.path).toBe('users/u1/assignments/a1');
+    expect(data).toEqual({ status: 'todo', completedAt: fs.DELETE, updatedAt: a.updatedAt });
+    expect(opts.mergeFields).toEqual(['status', 'completedAt', 'updatedAt']);
+  });
+
+  it('writes day changes per date, so other dates in the account are left alone', async () => {
+    const store = createFirestoreStore('u1');
+    await store.saveProfile({ dayOverrides: { '2026-10-14': { noSchool: true, name: 'Snow day' } } }, ['2026-10-14', '2026-10-20']);
+    const [, data, opts] = fs.setDoc.mock.calls[0] as [unknown, Record<string, unknown>, { mergeFields: (string | { segments: string[] })[] }];
+    expect(data.dayOverrides).toEqual({ '2026-10-14': { noSchool: true, name: 'Snow day' }, '2026-10-20': fs.DELETE });
+    expect(opts.mergeFields).not.toContain('dayOverrides');
+    expect(opts.mergeFields.filter((f) => typeof f !== 'string').map((f) => (f as { segments: string[] }).segments)).toEqual([
+      ['dayOverrides', '2026-10-14'],
+      ['dayOverrides', '2026-10-20'],
+    ]);
   });
 
   it('refuses data over the account limits before writing it, naming the field', async () => {

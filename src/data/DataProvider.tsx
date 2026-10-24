@@ -1,10 +1,18 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { Assignment, ClassInfo, Profile } from '../types';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { Assignment, ClassInfo, DayOverride, Profile } from '../types';
 import { useAuth } from '../auth/AuthProvider';
 import LoadErrorScreen from '../components/account/LoadErrorScreen';
 import { createFirestoreStore } from './firestoreStore';
 import { localStore } from './localStore';
-import { DEFAULT_PROFILE, type DataStore, type ErrorSource } from './store';
+import { withClassDefaults } from '../lib/classes';
+import { normalizeAssignment } from '../lib/homework';
+import { changedDates, changedFields, DEFAULT_PROFILE, type DataStore, type ErrorSource } from './store';
+
+/** day changes edited outside the app may hold non-objects; drop them so pages can rely on the shape */
+function cleanOverrides(o: unknown): Record<string, DayOverride> {
+  if (!o || typeof o !== 'object') return {};
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v && typeof v === 'object' && !Array.isArray(v))) as Record<string, DayOverride>;
+}
 
 export interface DataState {
   store: DataStore;
@@ -124,21 +132,40 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [store],
   );
 
+  // Everything read is normalized once here, so no page has to cope with partial records
+  // (older data, other devices, edits made outside the app).
+  const fullProfile = useMemo<Profile>(() => ({ ...DEFAULT_PROFILE, ...(profile ?? {}), dayOverrides: cleanOverrides(profile?.dayOverrides) }), [profile]);
+  const allClasses = useMemo(() => (classes ?? []).map(withClassDefaults).sort((a, b) => a.name.localeCompare(b.name)), [classes]);
+  const allAssignments = useMemo(() => (assignments ?? []).map(normalizeAssignment), [assignments]);
+
+  // Saves send only what changed against this device's copy (fields of a class or assignment,
+  // dates of the day changes), so a device that was offline can't undo edits made elsewhere.
+  const latest = useRef({ profile: fullProfile, classes: allClasses, assignments: allAssignments });
+  latest.current = { profile: fullProfile, classes: allClasses, assignments: allAssignments };
+
   const value = useMemo<DataState>(
     () => ({
       store,
-      profile: { ...DEFAULT_PROFILE, ...(profile ?? {}), dayOverrides: { ...(profile?.dayOverrides ?? {}) } },
-      classes: [...(classes ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
-      assignments: assignments ?? [],
+      profile: fullProfile,
+      classes: allClasses,
+      assignments: allAssignments,
       loading,
       error: listenError ?? saveError,
-      saveProfile: wrap((p: Partial<Profile>) => store.saveProfile(p)),
-      saveClass: wrap((c: ClassInfo) => store.saveClass({ ...c, updatedAt: Date.now() })),
+      saveProfile: wrap((p: Partial<Profile>) =>
+        p.dayOverrides ? store.saveProfile(p, changedDates(latest.current.profile.dayOverrides, p.dayOverrides)) : store.saveProfile(p),
+      ),
+      saveClass: wrap((c: ClassInfo) => {
+        const next = { ...c, updatedAt: Date.now() };
+        return store.saveClass(next, changedFields(latest.current.classes.find((x) => x.id === c.id), next));
+      }),
       deleteClass: wrap((id: string) => store.deleteClass(id)),
-      saveAssignment: wrap((a: Assignment) => store.saveAssignment({ ...a, updatedAt: Date.now() })),
+      saveAssignment: wrap((a: Assignment) => {
+        const next = { ...a, updatedAt: Date.now() };
+        return store.saveAssignment(next, changedFields(latest.current.assignments.find((x) => x.id === a.id), next));
+      }),
       deleteAssignment: wrap((id: string) => store.deleteAssignment(id)),
     }),
-    [store, profile, classes, assignments, loading, listenError, saveError, wrap],
+    [store, fullProfile, allClasses, allAssignments, loading, listenError, saveError, wrap],
   );
 
   // Nothing could be loaded (e.g. a new device and the sync server refuses): say so and offer a

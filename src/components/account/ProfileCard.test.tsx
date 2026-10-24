@@ -93,3 +93,37 @@ describe('ProfileCard: switching school', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Could not reach the server.');
   });
 });
+
+describe('ProfileCard: day changes and the name field', () => {
+  it('sets day changes aside with the old school when switching', async () => {
+    h.profile = { ...h.profile, schoolId: 'hsn', dayOverrides: { '2026-10-14': { cycleDay: 'B' }, '2026-10-15': { noSchool: true, school: 'cms' } } };
+    render(<ProfileCard />);
+    fireEvent.click(screen.getByRole('radio', { name: /Community Middle School/ }));
+    await act(async () => fireEvent.click(dialog().getByRole('button', { name: 'Switch school' })));
+    expect(saveProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ schoolId: 'cms', dayOverrides: { '2026-10-14': { cycleDay: 'B', school: 'hsn' }, '2026-10-15': { noSchool: true, school: 'cms' } } }),
+    );
+    h.profile = { ...h.profile, dayOverrides: {} };
+  });
+
+  it('shows a name changed elsewhere instead of keeping (and later saving back) the old one', () => {
+    h.profile = { ...h.profile, displayName: 'Alex' };
+    const view = render(<ProfileCard />);
+    expect(screen.getByLabelText('Your name')).toHaveValue('Alex');
+    h.profile = { ...h.profile, displayName: 'Jordan' }; // a backup import or another device
+    view.rerender(<ProfileCard />);
+    expect(screen.getByLabelText('Your name')).toHaveValue('Jordan');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  it('keeps what the student is typing when the stored name changes', () => {
+    h.profile = { ...h.profile, displayName: 'Alex' };
+    const view = render(<ProfileCard />);
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Al' } });
+    h.profile = { ...h.profile, displayName: 'Jordan' };
+    view.rerender(<ProfileCard />);
+    expect(screen.getByLabelText('Your name')).toHaveValue('Al');
+    h.profile = { ...h.profile, displayName: undefined };
+  });
+});
+

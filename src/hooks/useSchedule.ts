@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DayInfo, DayOverride, ISODate, Profile, SchoolId, SchoolSchedule } from '../types';
 import { useData } from '../data/DataProvider';
 import { loadSchoolSchedule } from '../schools';
-import { normalizeSchedule, resolveDay } from '../lib/schedule';
+import { normalizeSchedule, overridesFor, resolveDay } from '../lib/schedule';
 
 export { classesOnDay, type Meeting } from '../lib/schedule';
 
@@ -70,7 +70,8 @@ export function activeCustomSchedule(p: Pick<Profile, 'customSchedule' | 'school
 export function useSchedule(): ScheduleState {
   const { profile } = useData();
   const custom = useStable<SchoolSchedule | undefined>(activeCustomSchedule(profile));
-  const overrides = useStable<Record<ISODate, DayOverride>>(profile.dayOverrides ?? {});
+  // day changes made at another school (before switching) don't apply here
+  const overrides = useStable<Record<ISODate, DayOverride>>(overridesFor(profile.dayOverrides ?? {}, profile.schoolId));
   const file = useSchoolScheduleFile(profile.schoolId, !custom);
 
   const source = custom ?? file.schedule;

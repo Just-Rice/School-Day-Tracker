@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useData } from '../../data/DataProvider';
 import { activeCustomSchedule, useSchedule } from '../../hooks/useSchedule';
 import { todayISO } from '../../lib/dates';
+import { overridesFor } from '../../lib/schedule';
 import { SCHOOLS } from '../../schools';
 import { Card, Chip } from '../ui';
 
@@ -11,7 +12,7 @@ export default function ScheduleCard() {
   const custom = !!activeCustomSchedule(profile);
   const school = SCHOOLS[profile.schoolId];
   const today = todayISO();
-  const dates = Object.keys(profile.dayOverrides ?? {});
+  const dates = Object.keys(overridesFor(profile.dayOverrides ?? {}, profile.schoolId));
   const upcoming = dates.filter((d) => d >= today).length;
   const year = schedule?.schoolYear ? ` ${schedule.schoolYear}` : '';
 

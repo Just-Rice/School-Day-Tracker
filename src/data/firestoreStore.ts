@@ -2,8 +2,8 @@
 //   users/{uid}                    the Profile fields at top level (+ updatedAt)
 //   users/{uid}/classes/{id}       one ClassInfo per document
 //   users/{uid}/assignments/{id}   one Assignment per document
-import { collection, deleteDoc, deleteField, doc, getDocs, onSnapshot, setDoc, writeBatch, type DocumentData, type FieldValue, type Firestore, type QueryDocumentSnapshot } from 'firebase/firestore';
-import type { Assignment, ClassInfo, Profile } from '../types';
+import { collection, deleteDoc, deleteField, doc, FieldPath, getDocs, onSnapshot, setDoc, writeBatch, type DocumentData, type DocumentReference, type FieldValue, type Firestore, type QueryDocumentSnapshot } from 'firebase/firestore';
+import type { Assignment, ClassInfo, ISODate, Profile } from '../types';
 import { getDb } from '../firebase';
 import { describeLimitProblem, limitError, overAccountLimit } from './limits';
 import { clean, type DataStore, type OnError, type Unsubscribe } from './store';
@@ -43,6 +43,18 @@ export function toFirestoreProfile<D>(p: Partial<Profile>, del: D, now: number =
   }
   data.updatedAt = now;
   return { data, fields: Object.keys(data) };
+}
+
+/**
+ * The write for an item: the whole document for a new one, or with `changed` only those top-level
+ * fields (a field missing from the item is deleted), merged into the stored document.
+ */
+export function itemWrite<D>(item: object, changed: readonly string[] | undefined, del: D): { data: Record<string, unknown | D>; mergeFields?: string[] } {
+  if (!changed) return { data: clean(item) as Record<string, unknown> };
+  const v = item as Record<string, unknown>;
+  const data: Record<string, unknown | D> = {};
+  for (const k of changed) data[k] = v[k] === undefined ? del : clean(v[k]);
+  return { data, mergeFields: [...changed] };
 }
 
 /** A stored profile document back to a Profile (unknown fields dropped). */
@@ -169,6 +181,12 @@ function checked(kind: 'class' | 'assignment' | 'profile', d: object, write: () 
 // The store
 // ---------------------------------------------------------------------------------------------
 
+function writeItem(ref: DocumentReference, item: object, changed: readonly string[] | undefined): Promise<void> {
+  const { data, mergeFields } = itemWrite<FieldValue>(item, changed, deleteField());
+  if (mergeFields?.length === 0) return Promise.resolve();
+  return mergeFields ? setDoc(ref, data, { mergeFields }) : setDoc(ref, data);
+}
+
 function refs(db: Firestore, uid: string) {
   const user = doc(db, 'users', uid);
   return { user, classes: collection(user, CLASSES), assignments: collection(user, ASSIGNMENTS) };
@@ -188,10 +206,25 @@ export function createFirestoreStore(uid: string): DataStore {
         onSnapshot(r.user, (s) => cb(fromFirestoreProfile(s.data())), fail(onError)),
       );
     },
-    saveProfile(p) {
+    saveProfile(p, changedDates?: readonly ISODate[]) {
       return checked('profile', p, () => {
-        const { data, fields } = toFirestoreProfile<FieldValue>(p, deleteField());
-        return save(setDoc(r.user, data, { mergeFields: fields }));
+        // with changedDates, write only those day changes (each its own field path), so a device
+        // that was offline doesn't erase day changes another device saved meanwhile
+        const perDate = changedDates && p.dayOverrides ? p.dayOverrides : undefined;
+        const rest = { ...p };
+        if (perDate) delete rest.dayOverrides;
+        const { data, fields } = toFirestoreProfile<FieldValue>(rest, deleteField());
+        const mask: (string | FieldPath)[] = [...fields];
+        if (perDate) {
+          const days: Record<string, unknown> = {};
+          for (const d of changedDates!) {
+            const v = perDate[d];
+            days[d] = v === undefined || v === null ? deleteField() : clean(v);
+            mask.push(new FieldPath('dayOverrides', d));
+          }
+          data.dayOverrides = days;
+        }
+        return save(setDoc(r.user, data, { mergeFields: mask }));
       });
     },
 
@@ -201,8 +234,8 @@ export function createFirestoreStore(uid: string): DataStore {
         onSnapshot(r.classes, (s) => cb(s.docs.map((d) => fromItemDoc<ClassInfo>(d))), fail(onError)),
       );
     },
-    saveClass(c) {
-      return checked('class', c, () => save(setDoc(doc(r.classes, c.id), clean(c))));
+    saveClass(c, changed) {
+      return checked('class', c, () => save(writeItem(doc(r.classes, c.id), c, changed)));
     },
     deleteClass(id) {
       return remove(deleteDoc(doc(r.classes, id)));
@@ -214,8 +247,8 @@ export function createFirestoreStore(uid: string): DataStore {
         onSnapshot(r.assignments, (s) => cb(s.docs.map((d) => fromItemDoc<Assignment>(d))), fail(onError)),
       );
     },
-    saveAssignment(a) {
-      return checked('assignment', a, () => save(setDoc(doc(r.assignments, a.id), clean(a))));
+    saveAssignment(a, changed) {
+      return checked('assignment', a, () => save(writeItem(doc(r.assignments, a.id), a, changed)));
     },
     deleteAssignment(id) {
       return remove(deleteDoc(doc(r.assignments, id)));

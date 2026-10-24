@@ -155,6 +155,11 @@ export function withClassDefaults(c: ClassInfo): ClassInfo {
     teacher: { ...c.teacher, name: c.teacher?.name ?? '' },
     room: { ...c.room, label: c.room?.label ?? '' },
     periods: Array.isArray(c.periods) ? c.periods : [],
+    days: Array.isArray(c.days) ? c.days : undefined,
+    // entries edited outside the app may lack days or a room
+    altRooms: Array.isArray(c.altRooms)
+      ? c.altRooms.filter((x) => x && typeof x === 'object').map((x) => ({ ...x, days: Array.isArray(x.days) ? x.days : [], room: { ...x.room, label: x.room?.label ?? '' } }))
+      : undefined,
     term: c.term ?? 'full',
     color: c.color || CLASS_COLORS[0],
     links: Array.isArray(c.links) ? c.links : [],

@@ -1,7 +1,7 @@
 // Immutable edits for the schedule editor. Renames cascade to everything in the schedule that
 // refers to the id (bell slots, special days, the anchor). The editor also records them
 // (recordRename) so saving can carry them over to the user's classes and day changes.
-import type { Bell, BellSlot, ClassInfo, CycleDay, DayOverride, ISODate, SchoolSchedule, SlotKind } from '../../types';
+import type { Bell, BellSlot, ClassInfo, CycleDay, DayOverride, ISODate, SchoolId, SchoolSchedule, SlotKind } from '../../types';
 import { fromMinutes, toMinutes } from '../../lib/dates';
 import { isClockTime } from '../../lib/schedule';
 
@@ -273,11 +273,18 @@ export function renameInClass(cls: ClassInfo, r: Renames): ClassInfo {
   return { ...cls, periods, days, altRooms: altChanged ? altRooms : cls.altRooms };
 }
 
-/** day changes with their cycle day and bell ids renamed; `o` itself when none were */
-export function renameInOverrides(o: Record<ISODate, DayOverride>, r: Renames): Record<ISODate, DayOverride> {
+/**
+ * day changes with their cycle day and bell ids renamed; `o` itself when none were. With
+ * `schoolId`, day changes kept from another school are left alone (their ids are that school's).
+ */
+export function renameInOverrides(o: Record<ISODate, DayOverride>, r: Renames, schoolId?: SchoolId): Record<ISODate, DayOverride> {
   let changed = false;
   const out: Record<ISODate, DayOverride> = {};
   for (const [d, ov] of Object.entries(o)) {
+    if (schoolId && ov.school && ov.school !== schoolId) {
+      out[d] = ov;
+      continue;
+    }
     const cycleDay = ov.cycleDay === undefined ? undefined : renamed(ov.cycleDay, r.cycleDay);
     const bell = ov.bell === undefined ? undefined : renamed(ov.bell, r.bell);
     if (cycleDay === ov.cycleDay && bell === ov.bell) out[d] = ov;

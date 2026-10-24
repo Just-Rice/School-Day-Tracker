@@ -27,7 +27,7 @@ import { clean } from '../data/store';
 import { SCHOOLS } from '../schools';
 import { toISODate } from './dates';
 import { stampMapSchool } from './mapData';
-import { isClockTime } from './schedule';
+import { isClockTime, isISODate } from './schedule';
 
 export const BACKUP_APP = 'school-day-tracker';
 export const BACKUP_VERSION = 1;
@@ -134,7 +134,6 @@ function strList(v: unknown, max = 50, cut?: () => void): string[] {
     : [];
 }
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const SCHOOL_IDS: readonly SchoolId[] = ['hsn', 'cms', 'other'];
@@ -244,7 +243,7 @@ export function sanitizeAssignment(v: unknown, now: number = Date.now(), cut: Cu
   if (!isObj(v)) return null;
   const id = text(v.id, 200);
   const title = text(v.title, ASSIGNMENT_TEXT.title, () => cut('title'));
-  if (!id || !title || id.includes('/') || !isStr(v.dueDate) || !ISO_DATE.test(v.dueDate)) return null;
+  if (!id || !title || id.includes('/') || !isISODate(v.dueDate)) return null;
   const createdAt = timestamp(v.createdAt, now);
   const status: AssignmentStatus = oneOf(STATUSES, v.status) ? v.status : 'todo';
   return clean({
@@ -273,6 +272,7 @@ function dayOverride(v: unknown, cut: () => void): DayOverride | undefined {
     name: text(v.name, LINE, cut),
     cycleDay: text(v.cycleDay, 50),
     bell: text(v.bell, 50),
+    school: oneOf(SCHOOL_IDS, v.school) ? v.school : undefined,
   });
   return Object.keys(o).length ? o : undefined;
 }
@@ -364,7 +364,8 @@ export function sanitizeProfile(v: unknown, warnings: string[] = [], cut: Cut = 
   if (isObj(v.dayOverrides)) {
     const dates = Object.entries(v.dayOverrides);
     for (const [date, o] of upTo(dates, PROFILE_MAPS.dayOverrides, () => cut('day changes'))) {
-      const ok = ISO_DATE.test(date) ? dayOverride(o, () => cut('day changes')) : undefined;
+      // a real calendar date: 2026-13-45 would show up as a different day
+      const ok = isISODate(date) ? dayOverride(o, () => cut('day changes')) : undefined;
       if (ok) dayOverrides[date] = ok;
     }
   }

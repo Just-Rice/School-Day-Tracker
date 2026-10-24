@@ -101,6 +101,8 @@ export interface DayInfo {
 
 /** Per-user changes to a single date, e.g. a snow day or "today is actually Day 3" */
 export interface DayOverride {
+  /** the school this day change was made at, set when switching school; none = the profile's school */
+  school?: SchoolId;
   noSchool?: boolean;
   name?: string;
   cycleDay?: string;

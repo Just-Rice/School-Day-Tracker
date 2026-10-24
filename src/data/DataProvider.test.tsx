@@ -150,4 +150,45 @@ describe('DataProvider', () => {
     // nothing to subscribe again for
     expect(fake.subs.length).toBe(before);
   });
+
+  it("sends only the fields that changed, so a stale device can't undo another device's edits", async () => {
+    mount();
+    deliverAll([cls]);
+    await act(async () => {
+      await data.saveClass({ ...data.classes[0], archived: true });
+    });
+    const [saved, changed] = fake.store.saveClass.mock.calls[0] as [ClassInfo, string[]];
+    expect(saved.archived).toBe(true);
+    expect(changed.sort()).toEqual(['archived', 'updatedAt']);
+    // a class this device doesn't have yet is written whole
+    await act(async () => {
+      await data.saveClass({ ...cls, id: 'c2' });
+    });
+    expect(fake.store.saveClass.mock.calls[1][1]).toBeUndefined();
+  });
+
+  it('saves only the day changes that differ from this device’s copy', async () => {
+    mount();
+    deliverAll();
+    act(() => fake.live('profile').cb({ schoolId: 'hsn', onboarded: true, dayOverrides: { '2026-10-20': { bell: 'early' } } }));
+    await act(async () => {
+      await data.saveProfile({ dayOverrides: { ...data.profile.dayOverrides, '2026-10-14': { noSchool: true } } });
+    });
+    expect(fake.store.saveProfile.mock.calls[0][1]).toEqual(['2026-10-14']);
+  });
+
+  it('normalizes partial records so pages can rely on their shape', () => {
+    mount();
+    act(() => {
+      fake.live('profile').cb({ schoolId: 'hsn', onboarded: true, dayOverrides: { '2026-10-13': null, '2026-10-14': { noSchool: true } } });
+      fake.live('classes').cb([{ ...cls, altRooms: [{ days: ['A'] }, null, { room: { label: 'Lab' } }] }]);
+      fake.live('assignments').cb([{ id: 'a1', title: 'Essay', dueDate: '2026-10-14' }]);
+    });
+    expect(data.profile.dayOverrides).toEqual({ '2026-10-14': { noSchool: true } });
+    expect(data.classes[0].altRooms).toEqual([
+      { days: ['A'], room: { label: '' } },
+      { days: [], room: { label: 'Lab' } },
+    ]);
+    expect(data.assignments[0]).toMatchObject({ links: [], subtasks: [], status: 'todo', classId: null });
+  });
 });

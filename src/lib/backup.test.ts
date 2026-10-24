@@ -242,6 +242,14 @@ describe('parseBackup', () => {
   });
 });
 
+describe('day changes in a backup', () => {
+  it('keeps the school a day change was made at and drops impossible dates', () => {
+    const p = profile({ dayOverrides: { '2026-10-14': { cycleDay: 'B', school: 'hsn' }, '2026-13-45': { noSchool: true }, '2026-10-20': { noSchool: true } } });
+    const parsed = parseBackup(JSON.stringify(makeBackup({ profile: p, classes: [], assignments: [] })));
+    expect(parsed.profile?.dayOverrides).toEqual({ '2026-10-14': { cycleDay: 'B', school: 'hsn' }, '2026-10-20': { noSchool: true } });
+  });
+});
+
 describe('sanitizeClass', () => {
   it('fills defaults, fixes bad values and drops unknown fields', () => {
     const c = sanitizeClass(
@@ -281,6 +289,12 @@ describe('sanitizeAssignment', () => {
     expect(sanitizeAssignment({ id: 'a', title: 't' })).toBeNull();
     expect(sanitizeAssignment({ id: 'a', dueDate: '2026-01-01' })).toBeNull();
     expect(sanitizeAssignment({ title: 't', dueDate: '2026-01-01' })).toBeNull();
+  });
+
+  it('rejects due dates that are not real calendar dates', () => {
+    expect(sanitizeAssignment({ id: 'a', title: 't', dueDate: '2026-13-45' })).toBeNull();
+    expect(sanitizeAssignment({ id: 'a', title: 't', dueDate: '2027-02-30' })).toBeNull();
+    expect(sanitizeAssignment({ id: 'a', title: 't', dueDate: '2028-02-29' })).not.toBeNull();
   });
 
   it('normalizes enums, times and completion', () => {

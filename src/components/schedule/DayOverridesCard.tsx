@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { DayOverride, ISODate, SchoolSchedule } from '../../types';
 import { useData } from '../../data/DataProvider';
 import { formatDate, relativeDay } from '../../lib/dates';
-import { cleanOverride, describeOverride, isISODate, resolveDay } from '../../lib/schedule';
+import { cleanOverride, describeOverride, isISODate, overridesFor, resolveDay } from '../../lib/schedule';
 import { Button, Card, Chip, Field } from '../ui';
 
 type Kind = 'school' | 'off' | 'makeup';
@@ -23,7 +23,8 @@ function dayText(schedule: SchoolSchedule, date: ISODate, overrides: Record<ISOD
 /** Per-user changes to single dates: snow days, "today is Day 3", early dismissals. */
 export default function DayOverridesCard({ schedule, today }: { schedule: SchoolSchedule; today: ISODate }) {
   const { profile, saveProfile } = useData();
-  const overrides = profile.dayOverrides;
+  // this school's day changes; those kept from another school (before switching) are left as they are
+  const overrides = useMemo(() => overridesFor(profile.dayOverrides, profile.schoolId), [profile.dayOverrides, profile.schoolId]);
   const [date, setDate] = useState<ISODate>(today);
   const [draft, setDraft] = useState<DayOverride>(() => overrides[today] ?? {});
   const [status, setStatus] = useState('');
@@ -41,8 +42,9 @@ export default function DayOverridesCard({ schedule, today }: { schedule: School
     setStatus('');
   };
   const save = async (next: Record<ISODate, DayOverride>, msg: string) => {
+    const kept = Object.fromEntries(Object.entries(profile.dayOverrides).filter(([d]) => !(d in overrides)));
     try {
-      await saveProfile({ dayOverrides: next });
+      await saveProfile({ dayOverrides: { ...kept, ...next } });
       setStatus(msg);
     } catch {
       setStatus('Could not save the change.');

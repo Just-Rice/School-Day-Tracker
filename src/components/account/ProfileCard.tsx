@@ -3,6 +3,7 @@ import type { SchoolId } from '../../types';
 import { useData } from '../../data/DataProvider';
 import { activeCustomSchedule } from '../../hooks/useSchedule';
 import { roomMapKey, stampMapSchool } from '../../lib/mapData';
+import { stampOverrides } from '../../lib/schedule';
 import { SCHOOLS } from '../../schools';
 import { Button, Card, Field, Modal } from '../ui';
 import SchoolPicker from './SchoolPicker';
@@ -12,6 +13,13 @@ export default function ProfileCard() {
   const { profile, classes, saveProfile, saveClass } = useData();
   const [name, setName] = useState(profile.displayName ?? '');
   const [nameSaved, setNameSaved] = useState(false);
+  // the stored name changed elsewhere (a backup import, another tab or device): show it, unless
+  // the student is in the middle of typing a different one
+  const [seenName, setSeenName] = useState(profile.displayName ?? '');
+  if ((profile.displayName ?? '') !== seenName) {
+    setSeenName(profile.displayName ?? '');
+    if (name.trim() === seenName.trim()) setName(profile.displayName ?? '');
+  }
   const [pendingSchool, setPendingSchool] = useState<SchoolId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dirty = name.trim() !== (profile.displayName ?? '');
@@ -44,7 +52,9 @@ export default function ProfileCard() {
     const from = profile.schoolId;
     const marked = classes.map((c) => stampMapSchool(c, from)).filter((c, i) => c !== classes[i]);
     if (!(await attempt(() => Promise.all(marked.map((c) => saveClass(c)))))) return;
-    await run({ schoolId: id, grade: gradeFor(id, profile.grade) });
+    // day changes made here stay with this school too (they'd shift the new school's rotation)
+    const dayOverrides = stampOverrides(profile.dayOverrides, from);
+    await run({ schoolId: id, grade: gradeFor(id, profile.grade), ...(dayOverrides !== profile.dayOverrides && { dayOverrides }) });
   };
 
   const pickSchool = (id: SchoolId) => {

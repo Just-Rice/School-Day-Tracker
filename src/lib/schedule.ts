@@ -1,7 +1,7 @@
 // The schedule engine: turns a SchoolSchedule (bells + calendar + cycle) and the user's day
 // overrides into what happens on a given date. Everything here is pure so it can be tested and
 // reused by any page; useSchedule() wires it to the user's profile.
-import type { Bell, BellSlot, ClassInfo, ClassRoom, ClockTime, CycleDay, DayInfo, DayOverride, ISODate, SchoolSchedule, SlotKind, SpecialDay, Term } from '../types';
+import type { Bell, BellSlot, ClassInfo, ClassRoom, ClockTime, CycleDay, DayInfo, DayOverride, ISODate, SchoolSchedule, SchoolId, SlotKind, SpecialDay, Term } from '../types';
 import { addDays, daysBetween, formatTime, isWeekend, parseISODate, toISODate, toMinutes, weekday } from './dates';
 
 /** cycle day ids used by 'weekday' mode, indexed like Date.getDay() */
@@ -252,6 +252,23 @@ function buildResolver(schedule: SchoolSchedule, overrides: Record<ISODate, DayO
 
 function findBell(schedule: SchoolSchedule, id: string | undefined): Bell | undefined {
   return id === undefined ? undefined : schedule.bells?.find((b) => b.id === id);
+}
+
+/** The day changes that apply at schoolId: those made there, and those with no school recorded. */
+export function overridesFor(o: Record<ISODate, DayOverride>, schoolId: SchoolId): Record<ISODate, DayOverride> {
+  const out: Record<ISODate, DayOverride> = {};
+  let all = true;
+  for (const [d, v] of Object.entries(o)) {
+    if (!v.school || v.school === schoolId) out[d] = v;
+    else all = false;
+  }
+  return all ? o : out;
+}
+
+/** `o` with the day changes that have no school marked as schoolId's (before switching away from it) */
+export function stampOverrides(o: Record<ISODate, DayOverride>, schoolId: SchoolId): Record<ISODate, DayOverride> {
+  if (!Object.values(o).some((v) => !v.school)) return o;
+  return Object.fromEntries(Object.entries(o).map(([d, v]) => [d, v.school ? v : { ...v, school: schoolId }]));
 }
 
 /**

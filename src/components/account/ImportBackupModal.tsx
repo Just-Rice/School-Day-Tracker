@@ -6,10 +6,10 @@ import { applyImport, countPhrase } from './dataOps';
 
 type Mode = 'merge' | 'replace';
 
-function exportedOn(iso: string | undefined): string | null {
+function exportedOn(iso: string | undefined, clock: '12h' | '24h'): string | null {
   if (!iso) return null;
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', hourCycle: clock === '24h' ? 'h23' : 'h12' });
 }
 
 /** Shows what's in a backup file and applies it as a merge or a full replace. */
@@ -27,7 +27,7 @@ export default function ImportBackupModal({ backup, fileName, onClose, onDone }:
   };
 
   const plan = backup ? planImport({ classes, assignments }, backup, mode) : null;
-  const when = exportedOn(backup?.exportedAt);
+  const when = exportedOn(backup?.exportedAt, profile.clock);
   const where = store.kind === 'firestore' ? 'your account' : 'this device';
 
   const run = async () => {

@@ -94,7 +94,7 @@ export default function SchedulePage() {
           }
           // classes and day changes were moved to renamed ids when the custom schedule was saved
           const back = custom ? renamesBack(custom, base) : NO_RENAMES;
-          const dayOverrides = renameInOverrides(profile.dayOverrides, back);
+          const dayOverrides = renameInOverrides(profile.dayOverrides, back, profile.schoolId);
           try {
             await saveProfile({ customSchedule: undefined, ...(dayOverrides !== profile.dayOverrides && { dayOverrides }) });
           } catch {
@@ -164,7 +164,7 @@ export default function SchedulePage() {
           onSave={async (s, renames) => {
             setProblem(null);
             // renamed period, cycle day and bell ids carry over to the classes and day changes using them
-            const dayOverrides = renameInOverrides(profile.dayOverrides, renames);
+            const dayOverrides = renameInOverrides(profile.dayOverrides, renames, profile.schoolId);
             try {
               await saveProfile({ customSchedule: clean(prepareForSave(s)), ...(dayOverrides !== profile.dayOverrides && { dayOverrides }) });
             } catch {
