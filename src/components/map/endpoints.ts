@@ -48,6 +48,16 @@ export function parseFrom(param: string | null, data: Pick<SchoolMapData, 'entra
   return room ? { kind: 'room', room, label: room.title } : null;
 }
 
+/**
+ * What the From picker should hold after picking `toKey` as the destination: the start in the
+ * link when it's a real one (an unknown one falls back to the front entrance), else what the
+ * picker already had, but never the destination itself.
+ */
+export function keepFrom(from: Endpoint | null, fromRaw: string | null, pending: string, toKey: string): string {
+  const keep = from ? fromParam(from) : fromRaw ? 'entrance' : pending;
+  return keep === toKey ? 'entrance' : keep;
+}
+
 export function fromParam(ep: Endpoint): string {
   if (ep.kind === 'room') return ep.room.key;
   return ep.main ? 'entrance' : `entrance:${ep.index}`;

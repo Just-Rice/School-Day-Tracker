@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { SchoolSchedule } from '../../types';
 import ScheduleEditor from './ScheduleEditor';
@@ -28,9 +29,17 @@ const initial: SchoolSchedule = {
 
 function setup() {
   const onSave = vi.fn(async () => {});
-  render(<ScheduleEditor initial={initial} today="2026-10-09" ask={vi.fn()} onSave={onSave} onCancel={vi.fn()} />);
+  // a data router, for the unsaved-changes guard
+  const router = createMemoryRouter(
+    [
+      { path: '/schedule', element: <ScheduleEditor initial={initial} today="2026-10-09" ask={vi.fn()} onSave={onSave} onCancel={vi.fn()} /> },
+      { path: '/', element: <p>TODAY PAGE</p> },
+    ],
+    { initialEntries: ['/schedule'] },
+  );
+  render(<RouterProvider router={router} />);
   const saveButtons = () => screen.getAllByRole('button', { name: 'Save' });
-  return { onSave, saveButtons };
+  return { onSave, saveButtons, router };
 }
 
 describe('ScheduleEditor', () => {
@@ -57,5 +66,19 @@ describe('ScheduleEditor', () => {
     expect(saved.periods[0].id).toBe('P1');
     expect(saved.bells[0].days['*'][0].period).toBe('P1');
     expect(renames).toEqual({ period: { '1': 'P1' }, cycleDay: {}, bell: {} });
+  });
+
+  it('asks before a tab or Back leaves unsaved edits', async () => {
+    const { router } = setup();
+    // no edits: leaving is fine
+    await act(() => router.navigate('/'));
+    expect(screen.getByText('TODAY PAGE')).toBeInTheDocument();
+    await act(() => router.navigate('/schedule'));
+    fireEvent.change(screen.getByLabelText('Name of period 1'), { target: { value: 'First period' } });
+    await act(() => router.navigate('/'));
+    expect(screen.queryByText('TODAY PAGE')).not.toBeInTheDocument();
+    expect(screen.getByText('Discard changes?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing', hidden: true }));
+    expect(router.state.location.pathname).toBe('/schedule');
   });
 });

@@ -92,6 +92,11 @@ describe('NowCard', () => {
     expect(screen.getByRole('link', { name: /Directions to Room 108/ })).toHaveAttribute('href', '/map?from=214&to=108');
   });
 
+  it('during lunch, gives directions from the last class, not from outside the building', () => {
+    renderAt('2026-10-08', 10, 20);
+    expect(screen.getByRole('link', { name: /Directions to Room 108/ })).toHaveAttribute('href', '/map?from=214&to=108');
+  });
+
   it('shows passing time with a countdown', () => {
     renderAt('2026-10-08', 10, 37);
     expect(screen.getByText('Next: English')).toBeInTheDocument();

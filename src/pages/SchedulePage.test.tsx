@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ClassInfo, Profile, SchoolSchedule } from '../types';
 
@@ -30,11 +30,7 @@ import SchedulePage from './SchedulePage';
 const base: Profile = { schoolId: 'cms', theme: 'system', clock: '12h', dayOverrides: {}, onboarded: true };
 
 function renderPage() {
-  render(
-    <MemoryRouter>
-      <SchedulePage />
-    </MemoryRouter>,
-  );
+  render(<RouterProvider router={createMemoryRouter([{ path: '/', element: <SchedulePage /> }])} />);
 }
 
 describe('SchedulePage', () => {

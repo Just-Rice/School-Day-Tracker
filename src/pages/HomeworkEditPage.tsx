@@ -46,6 +46,8 @@ function AssignmentEditor({ id }: { id?: string }) {
   const [initial] = useState<Assignment | undefined>(() => {
     if (id) {
       const found = assignments.find((a) => a.id === id);
+      // its class was deleted: show and save it as having no class
+      if (found?.classId && !classes.some((c) => c.id === found.classId)) return normalizeAssignment({ ...found, classId: null });
       return found && normalizeAssignment(found);
     }
     const classId = params.get('classId');

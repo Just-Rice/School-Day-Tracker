@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import type { ISODate, SchoolSchedule } from '../../types';
 import { hasTimes, validateSchedule } from '../../lib/schedule';
-import { Button } from '../ui';
+import { Button, Modal, useUnsavedChanges } from '../ui';
 import EditBells from './EditBells';
 import EditCalendar from './EditCalendar';
 import EditCycle from './EditCycle';
@@ -43,6 +43,8 @@ export default function ScheduleEditor({ initial, today, ask, onSave, onCancel }
   const problems = useMemo(() => validateSchedule(draft), [draft]);
   const untimed = useMemo(() => draft.bells.some((b) => Object.values(b.days).some((slots) => !slots.every(hasTimes))), [draft]);
   const dirty = draft !== initial;
+  // a tab, Back or swipe-back while editing asks first, like the class and homework forms
+  const unsaved = useUnsavedChanges(dirty && !saving);
   const rename = (kind: IdKind, from: string, to: string) => {
     setDraft(RENAME[kind](draft, from, to));
     setRenames(recordRename(renames, initial, kind, from, to));
@@ -59,7 +61,15 @@ export default function ScheduleEditor({ initial, today, ask, onSave, onCancel }
   };
   const cancel = () => {
     if (!dirty) return onCancel();
-    ask({ title: 'Discard your changes?', body: 'Your edits since the last save will be lost.', confirmLabel: 'Discard', run: onCancel });
+    ask({
+      title: 'Discard your changes?',
+      body: 'Your edits since the last save will be lost.',
+      confirmLabel: 'Discard',
+      run: () => {
+        unsaved.allowLeave();
+        onCancel();
+      },
+    });
   };
 
   const bar = (
@@ -107,6 +117,21 @@ export default function ScheduleEditor({ initial, today, ask, onSave, onCancel }
         <EditCalendar {...props} />
       </Section>
       {bar}
+      <Modal
+        open={unsaved.blocked}
+        onClose={unsaved.stay}
+        title="Discard changes?"
+        footer={
+          <>
+            <Button onClick={unsaved.stay}>Keep editing</Button>
+            <Button variant="danger" onClick={unsaved.proceed}>
+              Discard
+            </Button>
+          </>
+        }
+      >
+        <p className="muted">Your edits to the bell schedule haven’t been saved.</p>
+      </Modal>
     </div>
   );
 }

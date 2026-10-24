@@ -157,7 +157,8 @@ export default function NowCard({ day, meetings, schedule, today, minutes, clock
         </div>
         {nxt ? <NextLine m={nxt} schedule={schedule} clock={clock} minutesUntil={st.minutesUntilNext} /> : <p className="muted small">Last period of the day.</p>}
         <div className="now-actions">
-          <Directions schoolId={schoolId} from={cur?.room} to={nextClass?.room} />
+          {/* lunch or a free period has no room: start from the last class, not outside the building */}
+          <Directions schoolId={schoolId} from={cur?.room ?? lastClass?.room} to={nextClass?.room} />
         </div>
       </>
     );

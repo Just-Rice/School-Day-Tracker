@@ -3,15 +3,16 @@ import path from 'node:path';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { ClassInfo, ClassRoom, Profile } from '../types';
+import type { Assignment, ClassInfo, ClassRoom, Profile } from '../types';
 
 const h = vi.hoisted(() => ({
   profile: { schoolId: 'hsn', theme: 'system', clock: '12h', dayOverrides: {}, onboarded: true } as Profile,
   classes: [] as ClassInfo[],
+  assignments: [] as Assignment[],
   deleteClass: vi.fn(async (..._a: unknown[]) => {}),
 }));
 
-vi.mock('../data/DataProvider', () => ({ useData: () => ({ profile: h.profile, classes: h.classes, assignments: [], loading: false, saveClass: async () => {}, deleteClass: h.deleteClass }) }));
+vi.mock('../data/DataProvider', () => ({ useData: () => ({ profile: h.profile, classes: h.classes, assignments: h.assignments, loading: false, saveClass: async () => {}, deleteClass: h.deleteClass }) }));
 vi.mock('../schools', async (load) => {
   const file = (id: string, name: string) => JSON.parse(fs.readFileSync(path.resolve(__dirname, `../../public/schools/${id}/${name}`), 'utf8'));
   return { ...(await load<typeof import('../schools')>()), loadSchoolMap: async (id: string) => file(id, 'map.json'), loadSchoolSchedule: async (id: string) => file(id, 'schedule.json') };
@@ -119,3 +120,20 @@ describe('ClassDetailPage: deleting', () => {
     expect(screen.getByRole('heading', { name: 'Class not found' })).toBeInTheDocument();
   });
 });
+
+describe('ClassDetailPage: homework', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    h.assignments = [];
+  });
+
+  it('marks work due earlier today as overdue, counting its due time', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 12, 13, 0)); // Mon Oct 12, 2026, 1:00 PM
+    h.assignments = [{ id: 'a1', classId: 'c1', title: 'Warm-up', type: 'homework', dueDate: '2026-10-12', dueTime: '08:00', priority: 'medium', status: 'todo', links: [], subtasks: [], createdAt: 1, updatedAt: 1 }];
+    renderClass(cls({ label: '214', mapKey: '214' }));
+    const row = (await screen.findByText('Warm-up')).closest('li')!;
+    expect(row.textContent).toMatch(/Overdue/i);
+  });
+});
+

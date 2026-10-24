@@ -495,3 +495,14 @@ describe('rebaseEdits', () => {
     expect(rebaseEdits(initial, { ...initial }, live)).toEqual(live);
   });
 });
+
+describe('filterAssignments: a class that no longer exists', () => {
+  it("counts as 'No class', the same as in the By class view", () => {
+    const orphan = emptyAssignment({ id: 'o', title: 'Lab report', classId: 'deleted', dueDate: '2026-10-14' });
+    const real = emptyAssignment({ id: 'r', title: 'Essay', classId: 'c1', dueDate: '2026-10-14' });
+    const classes = [{ id: 'c1', name: 'English' } as ClassInfo];
+    expect(filterAssignments([orphan, real], { classId: null }, classes).map((a) => a.id)).toEqual(['o']);
+    expect(filterAssignments([orphan, real], { classId: 'deleted' }, classes).map((a) => a.id)).toEqual([]);
+  });
+});
+

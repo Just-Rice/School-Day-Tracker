@@ -9,6 +9,7 @@ import { floorName } from '../components/classes/RoomPicker';
 import { errorText, settleSoon } from '../components/classes/saving';
 import { useData } from '../data/DataProvider';
 import { useNow, useSchedule } from '../hooks/useSchedule';
+import { isOverdue } from '../lib/homework';
 import { formatDate, formatTime, minutesNow, relativeDay, todayISO } from '../lib/dates';
 import { roomMapElsewhere, roomMapKey, useSchoolMap, type SchoolMapState } from '../lib/mapData';
 import {
@@ -285,7 +286,8 @@ function ClassDetail({ cls, onLeaving }: { cls: ClassInfo; onLeaving: (leaving: 
             <>
               <ul className="list cd-hw-list">
                 {hw.open.slice(0, 8).map((a) => {
-                  const overdue = a.dueDate < today;
+                  // due-time aware, like the Homework page and Today's card
+                  const overdue = isOverdue(a, today, minutesNow(now));
                   return (
                     <li key={a.id} className="cd-hw-row">
                       <Link to={`/homework/${a.id}`} className="cd-hw-title">

@@ -13,7 +13,7 @@ import MapCanvas, { type Highlight, type MapFocus } from '../components/map/MapC
 import RoomPanel, { type FromOption } from '../components/map/RoomPanel';
 import RoomSearch from '../components/map/RoomSearch';
 import { prepareRouting, useRoute } from '../components/map/routeClient';
-import { entranceLabels, fromParam, parseFrom, routeQuery, startLevel } from '../components/map/endpoints';
+import { entranceLabels, fromParam, keepFrom, parseFrom, routeQuery, startLevel } from '../components/map/endpoints';
 import { padBox, pointsBox, rectBox, type Box, type Insets } from '../components/map/geometry';
 import './map.css';
 
@@ -208,7 +208,7 @@ function SchoolMap({ schoolId }: { schoolId: SchoolId }) {
   // ------------------------------------------------------------------ actions
   const pickRoom = (r: MapRoom | null, move: boolean) => {
     if (!r) return update({ to: null, from: null });
-    if (fromRaw) setPendingFrom(fromRaw);
+    setPendingFrom(keepFrom(from, fromRaw, pendingFrom, r.key));
     update({ to: r.key, from: null, floor: String(r.level + 1) });
     if (move) focusOn(roomBox(r), 70);
     setSheetOpen(false);
@@ -221,6 +221,7 @@ function SchoolMap({ schoolId }: { schoolId: SchoolId }) {
   const swap =
     from?.kind === 'room' && selected
       ? () => {
+          setPendingFrom(selected.key);
           update({ from: selected.key, to: from.room.key, floor: String(selected.level + 1) });
         }
       : null;

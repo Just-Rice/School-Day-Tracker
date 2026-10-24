@@ -221,11 +221,13 @@ export function hasActiveFilters(f: AssignmentFilters): boolean {
  * Every given filter must match. `q` is split into words that must each appear (case-insensitive)
  * in the title, notes, subtasks, link labels, type, or, when `classes` is given, the class name.
  */
-export function filterAssignments(list: readonly Assignment[], f: AssignmentFilters, classes: readonly ClassInfo[] = []): Assignment[] {
+export function filterAssignments(list: readonly Assignment[], f: AssignmentFilters, classes?: readonly ClassInfo[]): Assignment[] {
   const words = (f.q ?? '').toLowerCase().split(/\s+/).filter(Boolean);
-  const className = new Map(classes.map((c) => [c.id, c.name]));
+  const className = new Map((classes ?? []).map((c) => [c.id, c.name]));
   return list.filter((a) => {
-    if (f.classId === null ? a.classId !== null : f.classId && a.classId !== f.classId) return false;
+    // a class that no longer exists counts as no class, as in groupByClass
+    const classId = classes && a.classId && !className.has(a.classId) ? null : a.classId;
+    if (f.classId === null ? classId !== null : f.classId && classId !== f.classId) return false;
     if (f.type && a.type !== f.type) return false;
     if (f.priority && a.priority !== f.priority) return false;
     if (f.status === 'open' ? a.status === 'done' : f.status && a.status !== f.status) return false;

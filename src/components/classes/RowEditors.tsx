@@ -23,12 +23,21 @@ function useRowKeys(length: number) {
   };
 }
 
+/**
+ * `selector` in the last row inside `root`. (Not `.edit-row:last-child`: the add button and the
+ * suggestions come after the rows, so no row is its container's last child.)
+ */
+function inLastRow(root: HTMLElement | null, selector: string): HTMLElement | null {
+  const rows = root?.querySelectorAll<HTMLElement>('.edit-row');
+  return rows?.length ? rows[rows.length - 1].querySelector<HTMLElement>(selector) : null;
+}
+
 /** focuses `selector` inside the last row after a row is added */
 function useFocusNewRow(count: number, selector: string) {
   const ref = useRef<HTMLDivElement>(null);
   const prev = useRef(count);
   useEffect(() => {
-    if (count > prev.current) ref.current?.querySelector<HTMLElement>(`.edit-row:last-child ${selector}`)?.focus();
+    if (count > prev.current) inLastRow(ref.current, selector)?.focus();
     prev.current = count;
   }, [count, selector]);
   return ref;
@@ -95,7 +104,7 @@ export function CustomFieldsEditor({ fields, onChange, errors, idPrefix }: { fie
   useEffect(() => {
     if (fields.length > prev.current) {
       const last = fields[fields.length - 1];
-      ref.current?.querySelector<HTMLElement>(`.edit-row:last-child ${last?.key ? '.cf-value' : '.cf-key'}`)?.focus();
+      inLastRow(ref.current, last?.key ? '.cf-value' : '.cf-key')?.focus();
     }
     prev.current = fields.length;
   }, [fields]);
